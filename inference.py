@@ -333,8 +333,8 @@ def main() -> None:
         from server.benchmark_store import append_result
         append_result(MODEL_NAME, MODEL_NAME, scores)
         print(f"💾 Results saved (avg: {avg:.4f})", flush=True)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"⚠️ Failed to save results to disk: {e}", flush=True)
 
 
 if __name__ == "__main__":

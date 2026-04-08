@@ -12,6 +12,9 @@ COPY pyproject.toml .
 RUN pip install --no-cache-dir . 2>/dev/null || pip install --no-cache-dir \
     fastapi uvicorn pydantic openai requests packaging gradio python-dotenv
 
+# Make sure results directory exists and is writable by any user
+RUN mkdir -p results && chmod 777 results
+
 # Copy project files
 COPY . .
 

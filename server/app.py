@@ -573,8 +573,8 @@ def run_benchmark(body: dict):
         # Persist to disk via benchmark_store
         try:
             append_result(model_name, model_id, scores)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Failed to append result: {e}", flush=True)
         yield f"data: {json.dumps({'type': 'done', 'result': result})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
