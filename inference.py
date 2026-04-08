@@ -214,17 +214,19 @@ def run_task(client: OpenAI, task_id: str) -> float:
     resp = requests.post(f"{ENV_URL}/reset", json={"task_id": task_id}, timeout=30)
     data = resp.json()
 
+    import uuid
     if "error" in data and not data.get("episode_id"):
         # ── MANDATORY: [START] line even on error ──
-        print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}", flush=True)
-        print(f"[END] success=false steps=0 score=0.00 rewards=", flush=True)
+        episode_id = f"ep-{uuid.uuid4().hex[:8]}"
+        print(f"[START] task_id={task_id} episode_id={episode_id}", flush=True)
+        print(f"[END] task_id={task_id} episode_id={episode_id} total_reward=0.0000 steps=0", flush=True)
         return 0.0
 
-    episode_id = data.get("episode_id", "unknown")
+    episode_id = data.get("episode_id", f"ep-{uuid.uuid4().hex[:8]}")
     obs = data.get("observation", data)
 
     # ── MANDATORY [START] — exact spec format ──
-    print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}", flush=True)
+    print(f"[START] task_id={task_id} episode_id={episode_id}", flush=True)
 
     rewards = []
     history = []
@@ -260,7 +262,7 @@ def run_task(client: OpenAI, task_id: str) -> float:
         except Exception as e:
             error_msg = str(e)
             # ── MANDATORY [STEP] line on connection error ──
-            print(f"[STEP] step={step_num} action={action_type} reward=0.00 done=true error={error_msg}", flush=True)
+            print(f"[STEP] task_id={task_id} step={step_num} action={action_type} reward=0.0000 done=True", flush=True)
             rewards.append(0.0)
             break
 
@@ -279,21 +281,18 @@ def run_task(client: OpenAI, task_id: str) -> float:
             display_action = "invalid"
 
         # ── MANDATORY [STEP] — exact spec format ──
-        error_val = step_error if step_error else "null"
-        print(f"[STEP] step={step_num} action={display_action} reward={reward:.2f} done={str(done).lower()} error={error_val}", flush=True)
+        print(f"[STEP] task_id={task_id} step={step_num} action={display_action} reward={reward:.4f} done={done}", flush=True)
 
         if done:
             break
 
-    # Score = max(rewards) — agent's best single-step performance, clamped to [0, 1]
-    score = round(min(max(max(rewards) if rewards else 0.0, 0.0), 1.0), 2)
-    success = score > 0.0
-    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    # Sum the rewards for multi-turn accumulation
+    total_reward = sum(rewards) if rewards else 0.0
 
     # ── MANDATORY [END] — exact spec format ──
-    print(f"[END] success={str(success).lower()} steps={step_num} score={score:.2f} rewards={rewards_str}", flush=True)
+    print(f"[END] task_id={task_id} episode_id={episode_id} total_reward={total_reward:.4f} steps={step_num}", flush=True)
 
-    return score
+    return total_reward
 
 
 def main() -> None:
@@ -318,8 +317,10 @@ def main() -> None:
         try:
             scores[task_id] = run_task(client, task_id)
         except Exception as e:
-            print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}", flush=True)
-            print(f"[END] success=false steps=0 score=0.00 rewards=", flush=True)
+            import uuid
+            episode_id = f"ep-{uuid.uuid4().hex[:8]}"
+            print(f"[START] task_id={task_id} episode_id={episode_id}", flush=True)
+            print(f"[END] task_id={task_id} episode_id={episode_id} total_reward=0.0000 steps=0", flush=True)
             scores[task_id] = 0.0
 
     avg = round(sum(scores.values()) / max(len(scores), 1), 2)
