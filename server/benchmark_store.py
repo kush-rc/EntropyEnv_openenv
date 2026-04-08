@@ -39,10 +39,10 @@ def append_result(model: str, model_id: str, scores: Dict[str, float]) -> Dict:
     """Add a new benchmark result and persist to disk. Returns the saved entry."""
     avg = round(sum(scores.values()) / max(len(scores), 1), 4)
     entry = {
-        'model': model,
+        'model_name': model,
         'model_id': model_id,
         'scores': scores,
-        'avg': avg,
+        'average': avg,
         'type': 'full_run',
         'timestamp': datetime.utcnow().isoformat(),
     }
@@ -55,6 +55,11 @@ def append_result(model: str, model_id: str, scores: Dict[str, float]) -> Dict:
 def get_all() -> List[Dict]:
     """Return all benchmark results, newest first."""
     results = _load()
+    for r in results:
+        if 'average' not in r and 'avg' in r:
+            r['average'] = r['avg']
+        if 'model_name' not in r and 'model' in r:
+            r['model_name'] = r['model']
     return sorted(results, key=lambda x: x.get('timestamp', ''), reverse=True)
 
 
@@ -63,7 +68,9 @@ def get_leaderboard() -> List[Dict]:
     results = _load()
     best: Dict[str, Dict] = {}
     for r in results:
-        mid = r.get('model_id', r.get('model', 'unknown'))
-        if mid not in best or r.get('avg', 0) > best[mid].get('avg', 0):
+        mid = r.get('model_id', r.get('model_name', r.get('model', 'unknown')))
+        val = r.get('average', r.get('avg', 0))
+        best_val = best[mid].get('average', best[mid].get('avg', 0)) if mid in best else -1
+        if mid not in best or val > best_val:
             best[mid] = r
-    return sorted(best.values(), key=lambda x: x.get('avg', 0), reverse=True)
+    return sorted(best.values(), key=lambda x: x.get('average', x.get('avg', 0)), reverse=True)
