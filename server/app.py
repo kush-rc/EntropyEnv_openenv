@@ -226,6 +226,7 @@ async def step(request: Request):
             'reward': round(float(result.get('reward', 0.0)), 4),
             'done': bool(result.get('done', False)),
             'observation': step_obs,
+            'info': {'validation_failed': step_obs.get('validation_failed', False)},
         }
     except Exception as e:
         return JSONResponse(status_code=200, content={
@@ -233,6 +234,7 @@ async def step(request: Request):
             'done': True,
             'error': str(e),
             'observation': {},
+            'info': {'error': str(e)},
         })
 
 
