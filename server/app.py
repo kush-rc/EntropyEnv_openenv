@@ -433,7 +433,7 @@ def _run_single_task_inline(task_id, api_base, api_key, model_id, system_prompt)
 
     ep_id = data.get('episode_id', 'unknown')
     obs = data.get('observation', data)
-    msg = f'[START] task={task_id} env=multi-agent-dev-tools-env model={model_id}'
+    msg = f'[START] task={task_id} env=EntropyEnv model={model_id}'
     logs.append(msg)
     yield {'type': 'log', 'level': 'info', 'msg': msg}
 

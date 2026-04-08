@@ -27,14 +27,14 @@ except ImportError:
 
 # ── Mandatory environment variables (spec-required names) ──
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME   = os.getenv("MODEL_NAME",   "Qwen/Qwen2.5-72B-Instruct")
-HF_TOKEN     = os.getenv("HF_TOKEN") or os.getenv("API_KEY") or ""
-ENV_URL      = os.getenv("ENV_URL",       "http://localhost:7860")
+MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+HF_TOKEN = os.getenv("HF_TOKEN")
+ENV_URL = os.getenv("ENV_URL", "http://localhost:7860")
 
 MAX_STEPS   = 8
 TEMPERATURE = 0.1
 MAX_TOKENS  = 400
-BENCHMARK   = "multi-agent-dev-tools-env"
+BENCHMARK   = "EntropyEnv"
 
 TASKS = [
     "sec_easy", "sec_medium", "sec_hard",
