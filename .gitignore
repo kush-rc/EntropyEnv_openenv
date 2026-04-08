@@ -1,0 +1,16 @@
+# ── Never commit these ──
+.env
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+multi_agent_dev_tools_env.egg-info/
+dist/
+build/
+test_output.txt
+
+# ── Internal / personal files ──
+unnecessary/
+results/
+.pytest_cache/
+uv.lock

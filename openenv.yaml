@@ -1,0 +1,59 @@
+spec_version: 1
+name: multi-agent-dev-tools-env
+description: >
+  A multi-domain RL environment for training AI agents on real-world developer
+  and clinical tasks. Covers MCP security auditing, PyTorch migration debugging,
+  and clinical workflow chaos recovery. 9 tasks across 3 domains with graded
+  difficulty (easy/medium/hard).
+type: environment
+runtime: docker
+port: 7860
+
+# Action and Observation spaces use typed Pydantic models
+# See server/models/ for full definitions
+
+tasks:
+  - id: sec_easy
+    name: Single vulnerability classification
+    difficulty: easy
+    description: Identify vulnerability type, CVSS score, and severity from a tool-call snippet.
+
+  - id: sec_medium
+    name: Vulnerability identification + fix proposal
+    difficulty: medium
+    description: Identify the vulnerability and propose a secure code fix.
+
+  - id: sec_hard
+    name: Adversarial patch defense with reviewer feedback
+    difficulty: hard
+    description: Identify, fix, and iteratively revise based on reviewer feedback.
+
+  - id: dep_easy
+    name: PyTorch 1.x deprecated API detection
+    difficulty: easy
+    description: Flag outdated packages and deprecated API usage.
+
+  - id: dep_medium
+    name: Version conflict chain resolution
+    difficulty: medium
+    description: Resolve version conflicts using compatibility matrix constraints.
+
+  - id: dep_hard
+    name: torch.compile graph-break hunter
+    difficulty: hard
+    description: Fix torch.compile graph-break patterns in dependency order.
+
+  - id: cli_easy
+    name: Single workflow gap detection
+    difficulty: easy
+    description: Detect missing steps in a clinical workflow and assess risk.
+
+  - id: cli_medium
+    name: Multi-gap priority ranking
+    difficulty: medium
+    description: Detect gaps and rank them by clinical priority.
+
+  - id: cli_hard
+    name: Dependency-ordered recovery planning
+    difficulty: hard
+    description: Plan a dependency-safe recovery sequence for a disrupted clinical workflow.

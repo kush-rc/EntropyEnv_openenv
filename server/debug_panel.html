@@ -1,0 +1,1196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenEnv Debug Panel — Multi-Agent Ecosystem</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0d1017;--surface:#151822;--surface2:#1c2030;--border:#262d40;
+    --blue:#4f8ef7;--green:#22c55e;--amber:#f59e0b;--red:#ef4444;--purple:#a855f7;--cyan:#22d3ee;
+    --text:#e2e8f0;--muted:#6b7a94;--mono:'JetBrains Mono','Fira Code',monospace;
+  }
+  body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',sans-serif;font-size:14px;height:100vh;overflow:hidden}
+
+  /* ── Header ── */
+  .header{background:linear-gradient(135deg,#131828 0%,#1a2040 100%);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:14px;flex-shrink:0}
+  .header-logo{display:flex;align-items:center;gap:10px}
+  .logo-dot{width:10px;height:10px;border-radius:50%;animation:pulse 2s infinite}
+  .logo-dot.green{background:var(--green);box-shadow:0 0 8px var(--green)}
+  .logo-dot.err{background:var(--red);box-shadow:0 0 8px var(--red)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+  .header h1{font-size:16px;font-weight:700;color:#fff;white-space:nowrap}
+  .badge{padding:3px 10px;border-radius:99px;font-size:10px;font-weight:600;background:#1e3a5f;color:var(--blue);border:1px solid #2563eb33}
+
+  /* ── Full Layout ── */
+  .layout{display:grid;grid-template-columns:280px 1fr;height:calc(100vh - 50px)}
+  .sidebar{background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+  .main{display:flex;flex-direction:column;overflow:hidden;min-height:0}
+
+  /* ── Cards ── */
+  .card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+  .card-hdr{padding:8px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:6px;background:var(--surface)}
+  .card-body{padding:10px}
+
+  /* ── Domain tabs ── */
+  .domain-tabs{display:flex;gap:3px;background:var(--bg);border-radius:6px;padding:3px}
+  .domain-tab{flex:1;padding:6px 0;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600;color:var(--muted);background:transparent;transition:all .2s}
+  .domain-tab.active{color:#fff}
+  .domain-tab[data-domain="security"].active{background:#1e1a2e;color:var(--purple);box-shadow:0 0 0 1px #a855f744}
+  .domain-tab[data-domain="pytorch"].active{background:#1a2a1a;color:var(--green);box-shadow:0 0 0 1px #22c55e44}
+  .domain-tab[data-domain="clinical"].active{background:#1a2030;color:var(--cyan);box-shadow:0 0 0 1px #22d3ee44}
+
+  /* ── Task list ── */
+  .task-list{display:flex;flex-direction:column;gap:3px}
+  .task-btn{padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text);cursor:pointer;text-align:left;display:flex;align-items:center;gap:8px;transition:all .15s;font-size:12px}
+  .task-btn:hover{border-color:var(--blue);background:#1e254033}
+  .task-btn.active{border-color:var(--blue);background:#1e2540;color:#fff}
+  .task-btn .diff{font-size:9px;font-weight:700;padding:2px 7px;border-radius:99px;margin-left:auto}
+  .diff-easy{background:#14532d33;color:var(--green);border:1px solid #22c55e44}
+  .diff-medium{background:#78350f33;color:var(--amber);border:1px solid #f59e0b44}
+  .diff-hard{background:#7f1d1d33;color:var(--red);border:1px solid #ef444444}
+
+  /* ── Form elements ── */
+  label{display:block;font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+  input,select,textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:7px 9px;color:var(--text);font-size:12px;font-family:inherit;outline:none;transition:border .15s}
+  input:focus,select:focus,textarea:focus{border-color:var(--blue)}
+  textarea{resize:vertical;font-family:var(--mono);font-size:11px;min-height:60px}
+  .field{margin-bottom:8px}
+
+  /* ── Buttons ── */
+  .btn{padding:7px 14px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:all .15s;display:inline-flex;align-items:center;gap:5px}
+  .btn-primary{background:var(--blue);color:#fff}
+  .btn-primary:hover{background:#3b7de8}
+  .btn-success{background:#166534;color:var(--green);border:1px solid #22c55e44}
+  .btn-success:hover{background:#14532d}
+  .btn-danger{background:#7f1d1d;color:var(--red);border:1px solid #ef444444}
+  .btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border);font-size:11px}
+  .btn-ghost:hover{color:var(--text);border-color:var(--text)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+
+  /* ── Top bar ── */
+  .main-topbar{padding:8px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--surface);flex-shrink:0}
+  .info-chip{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-size:10px;white-space:nowrap}
+  .info-chip span{color:var(--muted);margin-right:3px}
+  .info-chip strong{color:var(--text)}
+
+  /* ── Main content: 3 rows ── */
+  .content-area{display:flex;flex-direction:column;flex:1;overflow:hidden;min-height:0}
+
+  /* Row 1: Observation + Reward (flexible) */
+  .obs-reward-area{display:grid;grid-template-columns:1fr 340px;flex:1;overflow:hidden;min-height:0;border-bottom:1px solid var(--border)}
+
+  /* Row 2: Action builder (auto height, scrollable) */
+  .action-section{border-bottom:1px solid var(--border);background:var(--surface);padding:10px 16px;max-height:220px;overflow-y:auto;flex-shrink:0}
+  .action-tabs{display:flex;gap:3px;flex-wrap:wrap}
+  .action-tab{padding:4px 10px;border:1px solid var(--border);border-radius:5px;cursor:pointer;font-size:10px;font-weight:600;color:var(--muted);background:transparent}
+  .action-tab.active{border-color:var(--blue);color:var(--blue);background:#1e2540}
+  .action-fields{display:none;grid-template-columns:1fr 1fr;gap:8px}
+  .action-fields.visible{display:grid}
+  .action-fields .full{grid-column:1/-1}
+
+  /* Row 3: Step log (fixed 160px) */
+  .step-log{background:var(--bg);border-top:1px solid var(--border);overflow-y:auto;padding:8px 12px;font-family:var(--mono);font-size:11px;line-height:1.7;height:160px;flex-shrink:0}
+  .log-line{display:flex;gap:8px;align-items:baseline}
+  .log-time{color:var(--muted);flex-shrink:0;min-width:52px}
+  .log-tag{flex-shrink:0;font-weight:700;min-width:56px}
+  .log-tag.start{color:var(--blue)}
+  .log-tag.step{color:var(--amber)}
+  .log-tag.end{color:var(--green)}
+  .log-tag.error{color:var(--red)}
+  .log-tag.info{color:var(--purple)}
+  .log-msg{color:var(--text);word-break:break-all}
+
+  /* ── JSON viewer ── */
+  .json-view{background:var(--bg);font-family:var(--mono);font-size:11px;line-height:1.5;overflow-y:auto;padding:12px;white-space:pre-wrap;word-break:break-all;flex:1}
+  .json-key{color:#93c5fd}
+  .json-str{color:#86efac}
+  .json-num{color:#fbbf24}
+  .json-bool{color:#f87171}
+  .json-null{color:var(--muted)}
+
+  /* ── Reward ── */
+  .reward-section{padding:12px;overflow-y:auto;background:var(--surface)}
+  .reward-display{text-align:center;padding:10px 0}
+  .reward-number{font-size:42px;font-weight:800;font-family:var(--mono);line-height:1}
+  .reward-bar-wrap{margin:8px 0;height:8px;background:var(--border);border-radius:99px;overflow:hidden}
+  .reward-bar{height:100%;border-radius:99px;transition:width .5s ease;background:linear-gradient(90deg,var(--green),#84cc16)}
+  .reward-label{font-size:10px;color:var(--muted)}
+  .breakdown-item{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border);font-size:11px}
+  .breakdown-item:last-child{border:none}
+  .breakdown-val.pos{color:var(--green)}
+  .breakdown-val.neg{color:var(--red)}
+
+  /* ── Task meta ── */
+  .task-meta{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:11px;line-height:1.6;color:var(--muted)}
+  .task-meta strong{color:var(--text);display:block;margin-bottom:3px;font-size:12px}
+
+  /* ── Inference runner ── */
+  .inference-panel{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:4px}
+  .inference-progress{display:flex;gap:4px;flex-wrap:wrap;margin:6px 0}
+  .task-chip{padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;border:1px solid var(--border);color:var(--muted)}
+  .task-chip.running{border-color:var(--amber);color:var(--amber);animation:pulse 1s infinite}
+  .task-chip.done{border-color:var(--green);color:var(--green)}
+  .task-chip.fail{border-color:var(--red);color:var(--red)}
+
+  /* ── Status indicator ── */
+  .status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0}
+
+  /* ── Responsive ── */
+  @media(max-width:900px){
+    .layout{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+    .sidebar{border-right:none;border-bottom:1px solid var(--border);max-height:260px;flex-direction:row;flex-wrap:wrap;overflow-x:auto}
+    .obs-reward-area{grid-template-columns:1fr}
+  }
+
+  /* ── Page Navigation ── */
+  .page-tabs{display:flex;gap:2px;background:var(--bg);border-radius:6px;padding:2px;margin-left:16px}
+  .page-tab{padding:5px 14px;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600;color:var(--muted);background:transparent;transition:all .2s}
+  .page-tab.active{color:#fff;background:var(--blue);box-shadow:0 0 12px #4f8ef733}
+  .page-tab:hover:not(.active){color:var(--text);background:var(--surface2)}
+
+  .page{display:none;height:calc(100vh - 50px);overflow:hidden}
+  .page.visible{display:flex;flex-direction:column}
+
+  /* ── Benchmark Page ── */
+  .bench-layout{display:grid;grid-template-columns:360px 1fr;height:100%;overflow:hidden}
+  .bench-sidebar{background:var(--surface);border-right:1px solid var(--border);padding:16px;overflow-y:auto}
+  .bench-main{display:flex;flex-direction:column;overflow:hidden}
+
+  .bench-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:12px}
+  .bench-card-hdr{padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px;background:linear-gradient(135deg,var(--surface) 0%,var(--surface2) 100%)}
+  .bench-card-body{padding:12px}
+
+  .preset-row{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px}
+  .preset-btn{padding:4px 10px;border:1px solid var(--border);border-radius:5px;cursor:pointer;font-size:10px;font-weight:600;color:var(--muted);background:transparent;transition:all .15s}
+  .preset-btn:hover{border-color:var(--blue);color:var(--blue)}
+  .preset-btn.active{border-color:var(--blue);background:#1e2540;color:var(--blue)}
+
+  .bench-field{margin-bottom:10px}
+  .bench-field label{font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;display:block}
+  .bench-field input,.bench-field select{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:12px;font-family:inherit;outline:none;transition:border .15s}
+  .bench-field input:focus{border-color:var(--blue)}
+  .bench-field input[type=password]{font-family:var(--mono);letter-spacing:2px}
+
+  .run-btn{width:100%;padding:10px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;color:#fff;background:linear-gradient(135deg,#4f8ef7 0%,#a855f7 100%);transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px}
+  .run-btn:hover{transform:translateY(-1px);box-shadow:0 4px 20px #4f8ef744}
+  .run-btn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+  .run-btn.running{background:linear-gradient(135deg,#f59e0b 0%,#ef4444 100%);animation:pulse 1.5s infinite}
+
+  /* ── Results Table ── */
+  .results-area{flex:1;overflow-y:auto;padding:16px;background:var(--bg)}
+  .results-table{width:100%;border-collapse:collapse;font-size:12px}
+  .results-table th{padding:8px 10px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:1}
+  .results-table td{padding:6px 10px;border-bottom:1px solid var(--border)}
+  .results-table tr:hover{background:var(--surface2)}
+  .score-cell{font-family:var(--mono);font-weight:700;font-size:12px}
+  .score-high{color:var(--green)}
+  .score-mid{color:var(--amber)}
+  .score-low{color:var(--red)}
+  .avg-cell{font-size:14px;font-weight:800}
+
+  /* ── Bar Chart ── */
+  .chart-container{padding:16px;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0;max-height:280px;overflow-y:auto}
+  .chart-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .chart-label{width:120px;font-size:11px;font-weight:600;color:var(--text);text-align:right;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chart-bar-bg{flex:1;height:22px;background:var(--bg);border-radius:4px;overflow:hidden;border:1px solid var(--border)}
+  .chart-bar-fill{height:100%;border-radius:3px;transition:width .8s ease;display:flex;align-items:center;padding:0 6px;font-size:10px;font-weight:700;color:#fff;white-space:nowrap;min-width:0}
+
+  /* ── Benchmark Log ── */
+  .bench-log{background:var(--bg);border-top:1px solid var(--border);height:200px;overflow-y:auto;padding:8px 12px;font-family:var(--mono);font-size:11px;line-height:1.6;flex-shrink:0}
+  .bench-log .log-warn{color:var(--amber)}
+  .bench-log .log-err{color:var(--red)}
+  .bench-log .log-ok{color:var(--green)}
+  .bench-log .log-info{color:var(--blue)}
+
+  /* ── Empty State ── */
+  .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--muted);gap:12px}
+  .empty-state .icon{font-size:48px;opacity:.3}
+  .empty-state p{font-size:13px;text-align:center;max-width:260px;line-height:1.5}
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<div class="header">
+  <div class="header-logo">
+    <div class="logo-dot green" id="status-dot"></div>
+    <h1>OpenEnv Debug Panel</h1>
+    <span class="badge">Multi-Agent Ecosystem</span>
+  </div>
+  <div style="display:flex;gap:8px;margin-left:auto;align-items:center">
+    <div class="page-tabs">
+      <button class="page-tab active" onclick="switchPage('debug')" id="ptab-debug">🔧 Debug</button>
+      <button class="page-tab" onclick="switchPage('benchmark')" id="ptab-benchmark">📊 Benchmark</button>
+    </div>
+    <span class="badge" style="background:#1a2a1a;color:var(--green);border-color:#22c55e33">Security · PyTorch · Clinical</span>
+    <span id="server-status" style="font-size:10px;color:var(--muted)">Checking...</span>
+  </div>
+</div>
+
+<!-- ══ PAGE: DEBUG ══ -->
+<div class="page visible" id="page-debug">
+
+<!-- ── LAYOUT ── -->
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <!-- Domain Selector -->
+    <div class="card">
+      <div class="card-hdr">🎯 Domain</div>
+      <div class="card-body" style="padding:6px">
+        <div class="domain-tabs">
+          <button class="domain-tab active" data-domain="security" onclick="switchDomain('security')">Security</button>
+          <button class="domain-tab" data-domain="pytorch" onclick="switchDomain('pytorch')">PyTorch</button>
+          <button class="domain-tab" data-domain="clinical" onclick="switchDomain('clinical')">Clinical</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Task Selector -->
+    <div class="card">
+      <div class="card-hdr">📋 Tasks</div>
+      <div class="card-body" style="padding:6px">
+        <div class="task-list" id="task-list"></div>
+      </div>
+    </div>
+
+    <!-- Task Info -->
+    <div class="card">
+      <div class="card-hdr">ℹ️ Task Info</div>
+      <div class="card-body">
+        <div class="task-meta" id="task-meta">Select a task to see details.</div>
+      </div>
+    </div>
+
+    <!-- Run Full Inference -->
+    <div class="inference-panel">
+      <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px">⚡ Full Inference Run</div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:8px">Runs all 9 tasks via /inference endpoint.</div>
+      <button class="btn btn-success" style="width:100%;font-size:11px" onclick="runFullInference()" id="inf-btn">▶ Run All 9 Tasks</button>
+      <div class="inference-progress" id="inf-progress" style="display:none"></div>
+      <div id="inf-scores" style="margin-top:6px;font-family:var(--mono);font-size:10px"></div>
+    </div>
+
+  </div>
+
+  <!-- MAIN PANEL -->
+  <div class="main">
+
+    <!-- Top bar -->
+    <div class="main-topbar">
+      <div style="display:flex;gap:8px;flex:1;flex-wrap:wrap">
+        <div class="info-chip"><span>Task:</span><strong id="chip-task">—</strong></div>
+        <div class="info-chip"><span>Episode:</span><strong id="chip-episode" style="font-family:var(--mono);font-size:9px">—</strong></div>
+        <div class="info-chip"><span>Step:</span><strong id="chip-step">0</strong></div>
+        <div class="info-chip"><span>Reward:</span><strong id="chip-reward" style="color:var(--green)">0.0000</strong></div>
+        <div class="info-chip"><span>Done:</span><strong id="chip-done">—</strong></div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-primary" onclick="doReset()" id="btn-reset">⟳ Reset</button>
+        <button class="btn btn-success" onclick="doStep()" id="btn-step" disabled>▶ Step</button>
+        <button class="btn btn-ghost" onclick="clearLog()">🗑 Clear</button>
+      </div>
+    </div>
+
+    <!-- Content area: 3 flex rows -->
+    <div class="content-area">
+
+      <!-- ROW 1: Observation + Reward -->
+      <div class="obs-reward-area">
+        <!-- Observation -->
+        <div style="display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--border)">
+          <div class="card-hdr">📥 Observation</div>
+          <div class="json-view" id="obs-view">
+            <span style="color:var(--muted)">Press Reset to load the first observation...</span>
+          </div>
+        </div>
+        <!-- Reward -->
+        <div style="display:flex;flex-direction:column;overflow:hidden">
+          <div class="card-hdr">🏆 Reward</div>
+          <div class="reward-section">
+            <div class="reward-display">
+              <div class="reward-number" id="reward-num" style="color:var(--muted)">—</div>
+              <div class="reward-bar-wrap"><div class="reward-bar" id="reward-bar" style="width:0%"></div></div>
+              <div class="reward-label" id="reward-label">No reward yet</div>
+            </div>
+            <div id="reward-breakdown"></div>
+            <div id="step-result-raw" style="margin-top:6px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ROW 2: Action builder -->
+      <div class="action-section">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="font-size:11px;font-weight:700;color:var(--text)">⚡ Build Action</div>
+          <div class="action-tabs" id="action-tabs"></div>
+          <button class="btn btn-ghost" style="margin-left:auto" onclick="toggleRawJson()">{ } Raw JSON</button>
+        </div>
+        <div id="action-fields-container"></div>
+        <div id="raw-json-area" style="display:none">
+          <div class="field">
+            <label>Raw JSON Action</label>
+            <textarea id="raw-action" rows="3" placeholder='{"action_type":"identify_vulnerability","vuln_type":"sql_injection","cvss_score":7.5,"severity":"high"}'></textarea>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ROW 3: Step log (outside content-area, fixed height) -->
+    <div class="step-log" id="step-log">
+      <div class="log-line"><span class="log-tag info">INFO</span><span class="log-msg">Debug panel ready. Select a task and press Reset to start.</span></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════
+const TASKS = {
+  security: [
+    { id:'sec_easy',   label:'Injection Detection',    diff:'easy',   desc:'Identify whether a tool-call has a vulnerability. Return vuln_type, cvss_score, severity.', actions:['identify_vulnerability'] },
+    { id:'sec_medium', label:'Multi-Vuln Scan',        diff:'medium', desc:'Scan a code module for multiple vulnerabilities, then propose fixes.', actions:['identify_vulnerability','propose_fix'] },
+    { id:'sec_hard',   label:'Auto-Sanitize + Review', diff:'hard',   desc:'Identify, fix, and revise code based on reviewer feedback. Multi-turn.', actions:['identify_vulnerability','propose_fix','revise_fix'] },
+  ],
+  pytorch: [
+    { id:'dep_easy',   label:'Deprecation Mapper',     diff:'easy',   desc:'Detect deprecated PyTorch 1.x APIs and flag with replacements.', actions:['flag_outdated'] },
+    { id:'dep_medium', label:'Dependency Resolver',    diff:'medium', desc:'Resolve version conflicts using a compatibility matrix.', actions:['resolve_conflict'] },
+    { id:'dep_hard',   label:'Graph-Break Hunter',     diff:'hard',   desc:'Find and fix torch.compile breaking patterns.', actions:['migrate_api'] },
+  ],
+  clinical: [
+    { id:'cli_easy',   label:'Gap Detection',          diff:'easy',   desc:'Identify missing mandatory steps before a procedure.', actions:['detect_gap'] },
+    { id:'cli_medium', label:'Priority Recovery',      diff:'medium', desc:'Detect gaps then rank clinical issues by urgency.', actions:['detect_gap','rank_issues'] },
+    { id:'cli_hard',   label:'Full Re-plan',           diff:'hard',   desc:'Detect, rank, and reorder recovery steps respecting dependencies.', actions:['detect_gap','rank_issues','order_steps'] },
+  ]
+};
+
+const ACTION_SCHEMAS = {
+  identify_vulnerability: {
+    label: 'Identify Vuln',
+    fields: [
+      { key:'vuln_type', label:'Vulnerability Type', type:'select', options:['sql_injection','xss','idor','hardcoded_secret','missing_auth','jwt_misuse','path_traversal','ssrf','rate_limit_missing','xxe'] },
+      { key:'cvss_score', label:'CVSS Score (0–10)', type:'number', placeholder:'7.5', min:0, max:10, step:0.1 },
+      { key:'severity', label:'Severity', type:'select', options:['critical','high','medium','low','info'] },
+      { key:'affected_line', label:'Affected Line', type:'number', placeholder:'3' },
+    ]
+  },
+  propose_fix: {
+    label: 'Propose Fix',
+    fields: [
+      { key:'fix_code', label:'Fixed Code', type:'textarea', placeholder:'db.execute(sql, (param,))', full:true },
+      { key:'explanation', label:'Explanation', type:'textarea', placeholder:'Use parameterized queries', full:true },
+    ]
+  },
+  revise_fix: {
+    label: 'Revise Fix',
+    fields: [
+      { key:'fix_code', label:'Revised Code', type:'textarea', placeholder:'Complete corrected code', full:true },
+      { key:'addressed_feedback', label:'Addressed Feedback', type:'textarea', placeholder:'Paste reviewer_feedback here', full:true },
+    ]
+  },
+  flag_outdated: {
+    label: 'Flag Outdated',
+    fields: [
+      { key:'packages_json', label:'Outdated Packages (JSON)', type:'textarea', placeholder:'{"torch": "1.9.0", "numpy": "1.21.0"}', full:true },
+      { key:'deprecated_api', label:'Deprecated API', type:'text', placeholder:'torch.autograd.Variable' },
+      { key:'replacement', label:'Replacement', type:'text', placeholder:'plain tensor' },
+    ]
+  },
+  resolve_conflict: {
+    label: 'Resolve Conflict',
+    fields: [
+      { key:'packages_json', label:'Resolved Packages (JSON)', type:'textarea', placeholder:'{"torch":"2.1.0","numpy":"1.24.3"}', full:true },
+      { key:'reasoning', label:'Reasoning', type:'textarea', placeholder:'torch 2.1 requires numpy>=1.24', full:true },
+    ]
+  },
+  migrate_api: {
+    label: 'Migrate API',
+    fields: [
+      { key:'completed_items_json', label:'Completed Break IDs (JSON)', type:'textarea', placeholder:'["break_001"]', full:true },
+      { key:'code_changes_json', label:'Code Changes (JSON)', type:'textarea', placeholder:'{"break_001":"use torch.where"}', full:true },
+    ]
+  },
+  detect_gap: {
+    label: 'Detect Gap',
+    fields: [
+      { key:'missing_steps_json', label:'Missing Steps (JSON array)', type:'textarea', placeholder:'["pre_op_consent","blood_test"]', full:true },
+      { key:'risk_level', label:'Risk Level', type:'select', options:['critical','high','medium','low'] },
+    ]
+  },
+  rank_issues: {
+    label: 'Rank Issues',
+    fields: [
+      { key:'priority_order_json', label:'Priority Order (highest first)', type:'textarea', placeholder:'["blood_test","pre_op_consent"]', full:true },
+    ]
+  },
+  order_steps: {
+    label: 'Order Steps',
+    fields: [
+      { key:'recovery_steps_json', label:'Recovery Steps (ordered)', type:'textarea', placeholder:'["specialist","alt_treatment","post_op"]', full:true },
+    ]
+  }
+};
+
+// ═══════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════
+let state = {
+  domain: 'security',
+  task: TASKS.security[0],
+  episodeId: null,
+  step: 0,
+  totalReward: 0,
+  done: false,
+  currentAction: 'identify_vulnerability',
+  rawMode: false
+};
+
+// ═══════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════
+function init() {
+  renderTaskList();
+  selectTask(state.task);
+  checkServerHealth();
+  setInterval(checkServerHealth, 15000);
+}
+
+// ═══════════════════════════════════════════════
+// DOMAIN / TASK
+// ═══════════════════════════════════════════════
+function switchDomain(domain) {
+  state.domain = domain;
+  state.task = TASKS[domain][0];
+  document.querySelectorAll('.domain-tab').forEach(t => t.classList.toggle('active', t.dataset.domain === domain));
+  renderTaskList();
+  selectTask(state.task);
+}
+
+function renderTaskList() {
+  const list = document.getElementById('task-list');
+  list.innerHTML = '';
+  TASKS[state.domain].forEach(task => {
+    const btn = document.createElement('button');
+    btn.className = 'task-btn' + (task.id === state.task.id ? ' active' : '');
+    btn.innerHTML = `<span>${task.label}</span><span class="diff diff-${task.diff}">${task.diff.toUpperCase()}</span>`;
+    btn.onclick = () => selectTask(task);
+    list.appendChild(btn);
+  });
+}
+
+function selectTask(task) {
+  state.task = task;
+  state.episodeId = null;
+  state.step = 0;
+  state.totalReward = 0;
+  state.done = false;
+  document.querySelectorAll('.task-btn').forEach(b => b.classList.toggle('active', b.querySelector('span').textContent === task.label));
+  document.getElementById('task-meta').innerHTML = `<strong>${task.label} (${task.id})</strong>${task.desc}<br><br><span style="color:var(--blue)">Actions:</span> ${task.actions.join(' → ')}`;
+  document.getElementById('chip-task').textContent = task.id;
+  document.getElementById('chip-episode').textContent = '—';
+  document.getElementById('chip-step').textContent = '0';
+  document.getElementById('chip-reward').textContent = '0.0000';
+  document.getElementById('chip-done').textContent = '—';
+  document.getElementById('obs-view').innerHTML = '<span style="color:var(--muted)">Press Reset to start this task...</span>';
+  document.getElementById('reward-num').textContent = '—';
+  document.getElementById('reward-num').style.color = 'var(--muted)';
+  document.getElementById('reward-bar').style.width = '0%';
+  document.getElementById('reward-label').textContent = 'No reward yet';
+  document.getElementById('reward-breakdown').innerHTML = '';
+  document.getElementById('step-result-raw').innerHTML = '';
+  document.getElementById('btn-step').disabled = true;
+  document.getElementById('btn-step').textContent = '▶ Step';
+  state.currentAction = task.actions[0];
+  renderActionTabs();
+  renderActionFields();
+  log('info', `Selected: ${task.id} | ${task.label}`);
+}
+
+// ═══════════════════════════════════════════════
+// ACTION BUILDER
+// ═══════════════════════════════════════════════
+
+// Pre-built examples for each action type (shown when fields are empty)
+const ACTION_EXAMPLES = {
+  identify_vulnerability: {
+    action_type: 'identify_vulnerability',
+    vuln_type: 'sql_injection',
+    cvss_score: 8.5,
+    severity: 'critical',
+  },
+  propose_fix: {
+    action_type: 'propose_fix',
+    fix_code: 'db.execute("SELECT * FROM users WHERE name = ?", (user_input,))',
+    explanation: 'Use parameterized query to prevent SQL injection',
+  },
+  revise_fix: {
+    action_type: 'revise_fix',
+    fix_code: 'db.execute("SELECT * FROM users WHERE name = ?", (sanitize(user_input),))',
+    addressed_feedback: 'Added input validation on top of parameterized query',
+  },
+  flag_outdated: {
+    action_type: 'flag_outdated',
+    packages: { torch: '1.9.0' },
+    deprecated_api: 'torch.autograd.Variable',
+    replacement: 'plain tensor (remove Variable wrapper)',
+  },
+  resolve_conflict: {
+    action_type: 'resolve_conflict',
+    packages: { torch: '2.1.0', numpy: '1.24.0' },
+    reasoning: 'torch 2.1 requires numpy>=1.24 per compatibility matrix',
+  },
+  migrate_api: {
+    action_type: 'migrate_api',
+    completed_items: ['break_001', 'break_002', 'break_003'],
+    code_changes: {
+      break_001: 'use torch.where instead of if x.item()',
+      break_002: 'use tensor.shape[0] instead of len(x)',
+      break_003: 'use x.detach().numpy() outside compiled fn',
+    },
+  },
+  detect_gap: {
+    action_type: 'detect_gap',
+    missing_steps: ['pre_op_consent', 'blood_work'],
+    risk_level: 'critical',
+  },
+  rank_issues: {
+    action_type: 'rank_issues',
+    priority_order: ['resolve_insurance', 'pre_op_consent', 'book_specialist'],
+  },
+  order_steps: {
+    action_type: 'order_steps',
+    recovery_steps: ['resolve_insurance', 'book_specialist', 'complete_pre_op', 'schedule_surgery'],
+  },
+};
+
+function renderActionTabs() {
+  const tabs = document.getElementById('action-tabs');
+  tabs.innerHTML = '';
+  state.task.actions.forEach(a => {
+    const t = document.createElement('button');
+    t.className = 'action-tab' + (a === state.currentAction ? ' active' : '');
+    t.textContent = ACTION_SCHEMAS[a]?.label || a;
+    t.onclick = () => { state.currentAction = a; renderActionTabs(); renderActionFields(); syncRawJson(); };
+    tabs.appendChild(t);
+  });
+}
+
+function renderActionFields() {
+  const container = document.getElementById('action-fields-container');
+  const schema = ACTION_SCHEMAS[state.currentAction];
+  if (!schema) { container.innerHTML = '<div style="color:var(--muted);font-size:11px">No schema.</div>'; return; }
+  container.innerHTML = '';
+  const grid = document.createElement('div');
+  grid.className = 'action-fields visible';
+  schema.fields.forEach(f => {
+    const wrap = document.createElement('div');
+    wrap.className = 'field' + (f.full ? ' full' : '');
+    const lbl = document.createElement('label');
+    lbl.textContent = f.label;
+    wrap.appendChild(lbl);
+    let el;
+    if (f.type === 'select') {
+      el = document.createElement('select');
+      el.id = 'af-' + f.key;
+      f.options.forEach(o => { const op = document.createElement('option'); op.value = op.textContent = o; el.appendChild(op); });
+      el.addEventListener('change', syncRawJson);
+    } else if (f.type === 'textarea') {
+      el = document.createElement('textarea');
+      el.id = 'af-' + f.key;
+      el.placeholder = f.placeholder || '';
+      el.rows = 2;
+      el.addEventListener('input', syncRawJson);
+    } else {
+      el = document.createElement('input');
+      el.type = f.type || 'text';
+      el.id = 'af-' + f.key;
+      el.placeholder = f.placeholder || '';
+      if (f.min !== undefined) el.min = f.min;
+      if (f.max !== undefined) el.max = f.max;
+      if (f.step !== undefined) el.step = f.step;
+      el.addEventListener('input', syncRawJson);
+    }
+    wrap.appendChild(el);
+    grid.appendChild(wrap);
+  });
+  container.appendChild(grid);
+  // Set initial raw JSON
+  syncRawJson();
+}
+
+function buildAction() {
+  if (state.rawMode) {
+    try { return JSON.parse(document.getElementById('raw-action').value); }
+    catch(e) { log('error', 'Invalid JSON: ' + e.message); return null; }
+  }
+  return _buildActionFromFields();
+}
+
+function _buildActionFromFields() {
+  const schema = ACTION_SCHEMAS[state.currentAction];
+  const action = { action_type: state.currentAction };
+  schema.fields.forEach(f => {
+    const el = document.getElementById('af-' + f.key);
+    if (!el) return;
+    let val = el.value.trim();
+    if (!val) return;
+    if (f.key.endsWith('_json')) {
+      try { action[f.key.replace('_json','')] = JSON.parse(val); }
+      catch(e) { action[f.key.replace('_json','')] = val; }
+    } else if (f.type === 'number') {
+      action[f.key] = parseFloat(val);
+    } else {
+      action[f.key] = val;
+    }
+  });
+  return action;
+}
+
+function syncRawJson() {
+  const action = _buildActionFromFields();
+  // If form is mostly empty, show the example instead
+  const fieldCount = Object.keys(action).length;
+  const display = fieldCount <= 1 ? ACTION_EXAMPLES[state.currentAction] || action : action;
+  document.getElementById('raw-action').value = JSON.stringify(display, null, 2);
+}
+
+function toggleRawJson() {
+  state.rawMode = !state.rawMode;
+  document.getElementById('raw-json-area').style.display = state.rawMode ? 'block' : 'none';
+  document.getElementById('action-fields-container').style.display = state.rawMode ? 'none' : 'block';
+  if (state.rawMode) syncRawJson();
+}
+
+// ═══════════════════════════════════════════════
+// API CALLS
+// ═══════════════════════════════════════════════
+async function doReset() {
+  const btn = document.getElementById('btn-reset');
+  btn.disabled = true; btn.textContent = '⟳ Resetting...';
+  try {
+    log('start', `[START] task_id=${state.task.id}`);
+    const res = await fetch('/reset', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ task_id: state.task.id })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    state.episodeId = data.episode_id;
+    state.step = 0; state.totalReward = 0; state.done = false;
+    document.getElementById('chip-episode').textContent = (state.episodeId||'').slice(0,8)+'…';
+    document.getElementById('chip-step').textContent = '0';
+    document.getElementById('chip-reward').textContent = '0.0000';
+    document.getElementById('chip-done').textContent = 'false';
+    renderObs(data.observation || data);
+    document.getElementById('btn-step').disabled = false;
+    document.getElementById('btn-step').textContent = '▶ Step';
+    log('info', `Episode: ${state.episodeId}`);
+  } catch(e) {
+    log('error', 'Reset failed: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '⟳ Reset';
+  }
+}
+
+async function doStep() {
+  if (!state.episodeId) { log('error', 'No episode. Press Reset first.'); return; }
+  if (state.done) { log('info', 'Done. Press Reset for new episode.'); return; }
+  const action = buildAction();
+  if (!action) return;
+  action.episode_id = state.episodeId;
+  const btn = document.getElementById('btn-step');
+  btn.disabled = true; btn.textContent = '▶ Stepping...';
+  try {
+    const res = await fetch('/step', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(action)
+    });
+    const data = await res.json();
+    const reward = typeof data.reward === 'number' ? data.reward : 0;
+    const done = data.done === true || data.done === 'True';
+    state.step++; state.totalReward += reward; state.done = done;
+    document.getElementById('chip-step').textContent = state.step;
+    document.getElementById('chip-reward').textContent = state.totalReward.toFixed(4);
+    document.getElementById('chip-done').textContent = String(done);
+    document.getElementById('chip-done').style.color = done ? 'var(--green)' : 'var(--muted)';
+    renderObs(data.observation || data);
+    renderReward(reward, data);
+
+    // Auto-switch to next expected action if provided
+    const nextAction = (data.observation || {}).next_expected_action;
+    if (nextAction && ACTION_SCHEMAS[nextAction] && state.task.actions.includes(nextAction)) {
+      state.currentAction = nextAction;
+      renderActionTabs();
+      renderActionFields();
+    }
+
+    log('step', `[STEP] step=${state.step} action=${action.action_type} reward=${reward.toFixed(4)} done=${done}`);
+    if (done) {
+      log('end', `[END] task_id=${state.task.id} total_reward=${state.totalReward.toFixed(4)} steps=${state.step}`);
+      btn.disabled = true; btn.textContent = '✓ Done';
+    }
+  } catch(e) {
+    log('error', 'Step failed: ' + e.message);
+  } finally {
+    if (!state.done) { btn.disabled = false; btn.textContent = '▶ Step'; }
+  }
+}
+
+// ═══════════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════════
+function renderObs(obs) {
+  document.getElementById('obs-view').innerHTML = syntaxHighlight(JSON.stringify(obs, null, 2));
+}
+
+function renderReward(reward, data) {
+  const r = Math.max(0, Math.min(1, reward));
+  const color = r >= 0.7 ? 'var(--green)' : r >= 0.4 ? 'var(--amber)' : 'var(--red)';
+  document.getElementById('reward-num').textContent = reward.toFixed(4);
+  document.getElementById('reward-num').style.color = color;
+  document.getElementById('reward-bar').style.width = (r*100)+'%';
+  document.getElementById('reward-bar').style.background = r >= 0.7 ? 'linear-gradient(90deg,#16a34a,#22c55e)' : r >= 0.4 ? 'linear-gradient(90deg,#b45309,#f59e0b)' : 'linear-gradient(90deg,#991b1b,#ef4444)';
+  document.getElementById('reward-label').textContent = r >= 0.7 ? '✓ Good' : r >= 0.4 ? '⚠ Partial' : r > 0 ? '✗ Low' : '✗ Zero';
+
+  const bd = document.getElementById('reward-breakdown');
+  const breakdown = data.reward_breakdown || data.breakdown || null;
+  if (breakdown && typeof breakdown === 'object') {
+    bd.innerHTML = '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin:8px 0 4px">Breakdown</div>';
+    Object.entries(breakdown).forEach(([k,v]) => {
+      const pos = v >= 0;
+      bd.innerHTML += `<div class="breakdown-item"><span>${k.replace(/_/g,' ')}</span><span class="breakdown-val ${pos?'pos':'neg'}">${pos?'+':''}${typeof v==='number'?v.toFixed(4):v}</span></div>`;
+    });
+  } else bd.innerHTML = '';
+
+  const raw = document.getElementById('step-result-raw');
+  const filtered = {...data}; delete filtered.observation;
+  raw.innerHTML = '<div style="font-size:10px;color:var(--muted);margin-top:6px;font-family:var(--mono);white-space:pre-wrap;max-height:120px;overflow-y:auto">' + syntaxHighlight(JSON.stringify(filtered, null, 2)) + '</div>';
+}
+
+function syntaxHighlight(json) {
+  return json
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, m => {
+      let cls = 'json-num';
+      if (/^"/.test(m)) cls = /:$/.test(m) ? 'json-key' : 'json-str';
+      else if (/true|false/.test(m)) cls = 'json-bool';
+      else if (/null/.test(m)) cls = 'json-null';
+      return `<span class="${cls}">${m}</span>`;
+    });
+}
+
+// ═══════════════════════════════════════════════
+// LOG
+// ═══════════════════════════════════════════════
+function log(type, msg) {
+  const logEl = document.getElementById('step-log');
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  const now = new Date();
+  const t = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  const tagMap = {start:'START',step:'STEP',end:'END',error:'ERROR',info:'INFO'};
+  line.innerHTML = `<span class="log-time">${t}</span><span class="log-tag ${type}">[${tagMap[type]||type.toUpperCase()}]</span><span class="log-msg">${msg}</span>`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById('step-log').innerHTML = '';
+  log('info', 'Log cleared.');
+}
+
+// ═══════════════════════════════════════════════
+// FULL INFERENCE
+// ═══════════════════════════════════════════════
+async function runFullInference() {
+  const btn = document.getElementById('inf-btn');
+  btn.disabled = true; btn.textContent = '⏳ Running...';
+  const prog = document.getElementById('inf-progress');
+  const scores = document.getElementById('inf-scores');
+  prog.style.display = 'flex'; prog.innerHTML = '';
+  scores.innerHTML = '';
+  const allTasks = ['sec_easy','sec_medium','sec_hard','dep_easy','dep_medium','dep_hard','cli_easy','cli_medium','cli_hard'];
+  allTasks.forEach(t => { prog.innerHTML += `<span class="task-chip" id="chip-inf-${t}">${t}</span>`; });
+  log('info', 'Starting full inference via /inference...');
+  try {
+    const res = await fetch('/inference', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    const data = await res.json();
+    if (data.error) { log('error', 'Inference error: ' + data.error); return; }
+    const final = data.final_scores || {};
+    allTasks.forEach(t => {
+      const chip = document.getElementById('chip-inf-'+t);
+      const sc = final[t];
+      if (sc !== undefined) {
+        chip.classList.add(sc > 0.3 ? 'done' : 'fail');
+        chip.textContent = `${t}: ${typeof sc==='number'?sc.toFixed(3):sc}`;
+      } else chip.classList.add('fail');
+    });
+    const avg = data.average_score || 0;
+    scores.innerHTML = `<div style="padding:6px;background:var(--bg);border-radius:4px;border:1px solid var(--border)"><span style="font-size:10px;color:var(--muted)">Average: </span><strong style="color:var(--green)">${avg.toFixed ? avg.toFixed(4) : avg}</strong></div>`;
+    log('end', `Inference done. Average: ${avg}`);
+  } catch(e) {
+    log('error', 'Inference failed: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '▶ Run All 9 Tasks';
+  }
+}
+
+// ═══════════════════════════════════════════════
+// HEALTH CHECK — uses /reset OPTIONS or simple GET
+// ═══════════════════════════════════════════════
+async function checkServerHealth() {
+  try {
+    const res = await fetch('/', {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(3000)
+    });
+    if (res.ok) {
+      document.getElementById('status-dot').className = 'logo-dot green';
+      document.getElementById('server-status').textContent = 'Server online';
+      document.getElementById('server-status').style.color = 'var(--green)';
+    } else throw new Error('not ok');
+  } catch(e) {
+    document.getElementById('status-dot').className = 'logo-dot err';
+    document.getElementById('server-status').textContent = 'Server unreachable';
+    document.getElementById('server-status').style.color = 'var(--red)';
+  }
+}
+
+init();
+</script>
+
+</div><!-- end page-debug -->
+
+<!-- ══ PAGE: BENCHMARK ══ -->
+<div class="page" id="page-benchmark">
+<div class="bench-layout">
+  <!-- Benchmark Sidebar -->
+  <div class="bench-sidebar">
+
+    <div class="bench-card">
+      <div class="bench-card-hdr">🔑 API Configuration</div>
+      <div class="bench-card-body">
+        <label style="font-size:10px;color:var(--muted);margin-bottom:6px;display:block">Quick Presets</label>
+        <div class="preset-row">
+          <button class="preset-btn" onclick="applyPreset('groq')">⚡ Groq</button>
+          <button class="preset-btn" onclick="applyPreset('openrouter')">🌐 OpenRouter</button>
+          <button class="preset-btn" onclick="applyPreset('huggingface')">🤗 HuggingFace</button>
+          <button class="preset-btn" onclick="applyPreset('custom')">✏️ Custom</button>
+        </div>
+
+        <div class="bench-field">
+          <label>API Base URL</label>
+          <input type="text" id="bench-api-base" placeholder="https://api.groq.com/openai/v1" />
+        </div>
+
+        <div class="bench-field">
+          <label>API Key</label>
+          <input type="password" id="bench-api-key" placeholder="sk-..." />
+        </div>
+
+        <div class="bench-field">
+          <label>Model Display Name</label>
+          <input type="text" id="bench-model-name" placeholder="Llama-3.3-70B" />
+        </div>
+
+        <div class="bench-field">
+          <label>Model ID</label>
+          <input type="text" id="bench-model-id" placeholder="llama-3.3-70b-versatile" />
+        </div>
+      </div>
+    </div>
+
+    <button class="run-btn" id="bench-run-btn" onclick="runBenchmark()">
+      🚀 Run Benchmark (9 Tasks)
+    </button>
+
+    <div class="bench-card" style="margin-top:12px">
+      <div class="bench-card-hdr">📊 Run History
+        <button class="btn-ghost" style="margin-left:auto;font-size:9px;padding:2px 6px" onclick="clearResults()">Clear All</button>
+      </div>
+      <div class="bench-card-body" id="bench-history" style="max-height:200px;overflow-y:auto">
+        <div style="color:var(--muted);font-size:11px;text-align:center;padding:12px">No runs yet. Configure a model above and run.</div>
+      </div>
+    </div>
+
+    <div class="bench-card">
+      <div class="bench-card-hdr">ℹ️ Tips</div>
+      <div class="bench-card-body" style="font-size:11px;color:var(--muted);line-height:1.5">
+        <p>• <strong>Groq</strong> — Fast, free tier, use llama-3.3-70b-versatile</p>
+        <p>• <strong>OpenRouter</strong> — Many models, free tier has rate limits</p>
+        <p>• <strong>HuggingFace</strong> — Use your HF token with router.huggingface.co/v1</p>
+        <p style="margin-top:6px;color:var(--amber)">⚠️ Free tier models may hit rate limits on 9 tasks</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Benchmark Main -->
+  <div class="bench-main">
+
+    <!-- Results Table -->
+    <div class="results-area" id="bench-results">
+      <div class="empty-state">
+        <div class="icon">📊</div>
+        <p>Run a benchmark to see results here. Configure your API key and model on the left, then click Run.</p>
+      </div>
+    </div>
+
+    <!-- Comparison Chart -->
+    <div class="chart-container" id="bench-chart" style="display:none">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">Model Comparison — Average Score</div>
+      <div id="chart-bars"></div>
+    </div>
+
+    <!-- Log -->
+    <div class="bench-log" id="bench-log">
+      <div style="color:var(--muted)">Benchmark logs will appear here...</div>
+    </div>
+  </div>
+</div>
+</div><!-- end page-benchmark -->
+
+<script>
+// ══════════════════════════════════
+// PAGE SWITCHING
+// ══════════════════════════════════
+function switchPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('visible'));
+  document.querySelectorAll('.page-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('visible');
+  document.getElementById('ptab-' + page).classList.add('active');
+  if (page === 'benchmark') loadBenchResults();
+}
+
+// ══════════════════════════════════
+// API PRESETS
+// ══════════════════════════════════
+const PRESETS = {
+  groq: { base: 'https://api.groq.com/openai/v1', models: ['llama-3.3-70b-versatile','mixtral-8x7b-32768','gemma2-9b-it'], default_name: 'Llama-3.3-70B', default_id: 'llama-3.3-70b-versatile' },
+  openrouter: { base: 'https://openrouter.ai/api/v1', models: ['nvidia/nemotron-3-super-120b-a12b:free','qwen/qwen3.6-plus:free','deepseek/deepseek-r1:free'], default_name: 'Nemotron-120B', default_id: 'nvidia/nemotron-3-super-120b-a12b:free' },
+  huggingface: { base: 'https://router.huggingface.co/v1', models: ['Qwen/Qwen2.5-72B-Instruct','meta-llama/Llama-3.1-70B-Instruct'], default_name: 'Qwen-2.5-72B', default_id: 'Qwen/Qwen2.5-72B-Instruct' },
+  custom: { base: '', models: [], default_name: '', default_id: '' },
+};
+
+function applyPreset(name) {
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  const p = PRESETS[name];
+  document.getElementById('bench-api-base').value = p.base;
+  document.getElementById('bench-model-name').value = p.default_name;
+  document.getElementById('bench-model-id').value = p.default_id;
+  if (name !== 'custom') document.getElementById('bench-api-key').focus();
+}
+
+// ══════════════════════════════════
+// RUN BENCHMARK
+// ══════════════════════════════════
+let benchRunning = false;
+
+async function runBenchmark() {
+  if (benchRunning) return;
+  const apiBase = document.getElementById('bench-api-base').value.trim();
+  const apiKey = document.getElementById('bench-api-key').value.trim();
+  const modelName = document.getElementById('bench-model-name').value.trim() || 'Unknown';
+  const modelId = document.getElementById('bench-model-id').value.trim();
+
+  if (!apiBase || !apiKey || !modelId) {
+    alert('Please fill in API Base URL, API Key, and Model ID');
+    return;
+  }
+
+  benchRunning = true;
+  const btn = document.getElementById('bench-run-btn');
+  btn.disabled = true;
+  btn.classList.add('running');
+  btn.innerHTML = '⏳ Running 9 tasks...';
+
+  const logEl = document.getElementById('bench-log');
+  logEl.innerHTML = '';
+  benchLog('info', `Starting benchmark: ${modelName} (${modelId})`);
+  benchLog('info', `API: ${apiBase}`);
+  benchLog('info', `Running 9 tasks... This may take 2-5 minutes.`);
+
+  try {
+    const res = await fetch('/benchmark/run', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        model_name: modelName,
+        model_id: modelId,
+        api_base: apiBase,
+        api_key: apiKey,
+      })
+    });
+
+    if (res.headers.get('content-type').includes('application/json')) {
+      const data = await res.json();
+      if (data.error) benchLog('err', 'Error: ' + data.error);
+      throw new Error('Benchmark failed to start');
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let done = false;
+    let buffer = '';
+
+    while (!done) {
+      const { value, done: readerDone } = await reader.read();
+      done = readerDone;
+      if (value) {
+        buffer += decoder.decode(value, { stream: true });
+        let parts = buffer.split('\n\n');
+        buffer = parts.pop(); 
+
+        for (const part of parts) {
+          if (part.startsWith('data: ')) {
+            try {
+              const event = JSON.parse(part.substring(6));
+              
+              if (event.type === 'log') {
+                 benchLog(event.level, event.msg);
+              } else if (event.type === 'task_done') {
+                 benchLog('info', `🎯 Task ${event.task_id} completed with score: ${event.score.toFixed(4)}`);
+              } else if (event.type === 'done') {
+                 benchLog('ok', `✅ All tasks complete! Average: ${event.result.average}`);
+                 renderResults();
+                 renderChart();
+              }
+            } catch(e) {}
+          }
+        }
+      }
+    }
+
+  } catch(e) {
+    benchLog('err', 'Execution error: ' + e.message);
+  } finally {
+    benchRunning = false;
+    btn.disabled = false;
+    btn.classList.remove('running');
+    btn.innerHTML = '🚀 Run Benchmark (9 Tasks)';
+  }
+}
+
+function benchLog(type, msg) {
+  const logEl = document.getElementById('bench-log');
+  const cls = type === 'err' ? 'log-err' : type === 'warn' ? 'log-warn' : type === 'ok' ? 'log-ok' : 'log-info';
+  const time = new Date().toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  logEl.innerHTML += `<div class="${cls}"><span style="color:var(--muted)">${time}</span> ${msg}</div>`;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+// ══════════════════════════════════
+// RESULTS RENDERING
+// ══════════════════════════════════
+const BENCH_TASKS = ['sec_easy','sec_medium','sec_hard','dep_easy','dep_medium','dep_hard','cli_easy','cli_medium','cli_hard'];
+const BENCH_COLORS = ['#4f8ef7','#a855f7','#22c55e','#f59e0b','#ef4444','#22d3ee','#f472b6','#84cc16','#fb923c'];
+
+async function loadBenchResults() {
+  try {
+    const res = await fetch('/benchmark/results');
+    const data = await res.json();
+    if (data.results && data.results.length > 0) {
+      renderResults(data.results);
+      renderChart(data.results);
+      renderHistory(data.results);
+    }
+  } catch(e) {}
+}
+
+function renderResults(results) {
+  if (!results) {
+    fetch('/benchmark/results').then(r=>r.json()).then(d => { if(d.results) renderResults(d.results); });
+    return;
+  }
+  if (results.length === 0) return;
+
+  const el = document.getElementById('bench-results');
+  let html = '<table class="results-table"><thead><tr><th>Model</th>';
+  BENCH_TASKS.forEach(t => html += `<th>${t.replace('_',' ').toUpperCase()}</th>`);
+  html += '<th>AVG</th><th>Time</th></tr></thead><tbody>';
+
+  results.forEach((r, i) => {
+    html += `<tr>`;
+    html += `<td style="font-weight:700;color:${BENCH_COLORS[i % BENCH_COLORS.length]}">${r.model_name}</td>`;
+    BENCH_TASKS.forEach(t => {
+      const s = r.scores[t] || 0;
+      const cls = s >= 0.8 ? 'score-high' : s >= 0.4 ? 'score-mid' : 'score-low';
+      html += `<td class="score-cell ${cls}">${s.toFixed(2)}</td>`;
+    });
+    const avgCls = r.average >= 0.7 ? 'score-high' : r.average >= 0.4 ? 'score-mid' : 'score-low';
+    html += `<td class="score-cell avg-cell ${avgCls}">${r.average.toFixed(3)}</td>`;
+    const ts = new Date(r.timestamp);
+    html += `<td style="font-size:10px;color:var(--muted)">${ts.toLocaleTimeString()}</td>`;
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function renderChart(results) {
+  if (!results) {
+    fetch('/benchmark/results').then(r=>r.json()).then(d => { if(d.results) renderChart(d.results); });
+    return;
+  }
+  if (results.length === 0) return;
+
+  const container = document.getElementById('bench-chart');
+  container.style.display = 'block';
+  const bars = document.getElementById('chart-bars');
+
+  let html = '';
+  results.forEach((r, i) => {
+    const pct = Math.round(r.average * 100);
+    const color = BENCH_COLORS[i % BENCH_COLORS.length];
+    const gradient = `linear-gradient(90deg, ${color}88, ${color})`;
+    html += `<div class="chart-bar-row">
+      <div class="chart-label">${r.model_name}</div>
+      <div class="chart-bar-bg">
+        <div class="chart-bar-fill" style="width:${pct}%;background:${gradient}">${r.average.toFixed(3)}</div>
+      </div>
+    </div>`;
+  });
+  bars.innerHTML = html;
+}
+
+function renderHistory(results) {
+  const el = document.getElementById('bench-history');
+  if (!results || results.length === 0) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:11px;text-align:center;padding:12px">No runs yet.</div>';
+    return;
+  }
+  let html = '';
+  results.forEach((r, i) => {
+    const avgCls = r.average >= 0.7 ? 'score-high' : r.average >= 0.4 ? 'score-mid' : 'score-low';
+    const ts = new Date(r.timestamp);
+    html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px">
+      <span style="color:${BENCH_COLORS[i % BENCH_COLORS.length]};font-weight:700">${r.model_name}</span>
+      <span class="score-cell ${avgCls}" style="margin-left:auto">${r.average.toFixed(3)}</span>
+      <span style="color:var(--muted);font-size:9px">${ts.toLocaleTimeString()}</span>
+    </div>`;
+  });
+  el.innerHTML = html;
+}
+
+async function clearResults() {
+  if (!confirm('Clear all benchmark results?')) return;
+  await fetch('/benchmark/clear', {method:'POST'});
+  document.getElementById('bench-results').innerHTML = '<div class="empty-state"><div class="icon">📊</div><p>No results. Run a benchmark to see data.</p></div>';
+  document.getElementById('bench-chart').style.display = 'none';
+  document.getElementById('bench-history').innerHTML = '<div style="color:var(--muted);font-size:11px;text-align:center;padding:12px">No runs yet.</div>';
+}
+</script>
+
+</body>
+</html>
+
