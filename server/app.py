@@ -519,9 +519,9 @@ def _run_single_task_inline(task_id, api_base, api_key, model_id, system_prompt)
         logs.append(msg)
         yield {'type': 'log', 'level': 'info', 'msg': msg}
 
-    # Score = max(rewards) — same logic as inference.py
-    score = round(max(rewards) if rewards else 0.0, 2)
-    score = min(max(score, 0.0), 1.0)
+    # Sum the rewards for multi-turn accumulation — same logic as inference.py
+    total_reward = sum(rewards) if rewards else 0.0
+    score = round(min(max(total_reward, 0.0), 1.0), 2)
     success = score > 0.0
     rewards_str = ','.join(f'{r:.2f}' for r in rewards)
 
@@ -574,6 +574,7 @@ def run_benchmark(body: dict):
 
         # Persist to disk via benchmark_store
         try:
+            from .benchmark_store import append_result
             append_result(model_name, model_id, scores)
         except Exception as e:
             print(f"Failed to append result: {e}", flush=True)
