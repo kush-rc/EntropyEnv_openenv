@@ -1,3 +1,12 @@
+---
+title: EntropyEnv
+emoji: 🌀
+colorFrom: purple
+colorTo: blue
+sdk: docker
+app_port: 7860
+---
+
 # 🛠️ EntropyEnv: Multi-Agent Dev Tools Environment
 
 > A multi-domain RL environment for training and evaluating AI agents on **real-world developer and clinical tasks**.
