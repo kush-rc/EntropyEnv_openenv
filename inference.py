@@ -286,8 +286,8 @@ def run_task(client: OpenAI, task_id: str) -> float:
             break
 
     # Sum the rewards for multi-turn accumulation
-    total_reward = sum(rewards) if rewards else 0.0
-    score = round(min(max(total_reward, 0.0), 1.0), 2)
+    total_reward = sum(rewards) if rewards else 0.01
+    score = round(min(max(total_reward, 0.01), 0.99), 4)
     success = score > 0.0
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
 

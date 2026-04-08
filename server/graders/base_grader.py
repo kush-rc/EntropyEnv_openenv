@@ -6,13 +6,13 @@ from typing import Dict, Any, List, Callable
 
 
 def safe_score(raw) -> float:
-    """Always clamp to [0.0, 1.0]. Never crash. Handles None, str, out-of-range."""
+    """Always clamp strictly to (0.0, 1.0) range e.g. [0.01, 0.99]. Never crash."""
     if raw is None:
-        return 0.0                    # BUG 1 FIX — must be first line
+        return 0.01
     try:
-        return round(max(0.0, min(1.0, float(raw))), 4)
+        return round(max(0.01, min(0.99, float(raw))), 4)
     except (TypeError, ValueError):
-        return 0.0
+        return 0.01
 
 
 def repetition_penalty(action_type: str, last_actions: List[str], window: int = 3) -> float:
