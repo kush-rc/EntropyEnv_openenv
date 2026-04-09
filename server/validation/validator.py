@@ -7,6 +7,8 @@
 # - Rich hints so agent can self-correct on next step
 
 from typing import Dict, Tuple
+from functools import lru_cache
+import json
 
 VALID_VULN_TYPES = {
     'sql_injection', 'xss', 'idor', 'hardcoded_secret', 'missing_auth',
@@ -173,8 +175,10 @@ def validate_action(action: Dict, session) -> Tuple[bool, Dict]:
     return True, {}
 
 
-def _domain_check(action: Dict, atype: str) -> list:
-    """Check values are within allowed ranges/enums. Returns list of error dicts."""
+@lru_cache(maxsize=1024)
+def _cached_domain_errors(action_json: str, atype: str) -> list:
+    """Pure domain check logic that can be safely cached."""
+    action = json.loads(action_json)
     errors = []
 
     if atype == 'identify_vulnerability':
@@ -190,12 +194,6 @@ def _domain_check(action: Dict, atype: str) -> list:
         sev = action.get('severity', '')
         if sev not in VALID_SEVERITIES:
             errors.append({'field': 'severity', 'value': sev, 'allowed': sorted(VALID_SEVERITIES)})
-
-    elif atype in ('propose_fix', 'revise_fix'):
-        fix = action.get('fix_code', '')
-        if len(fix) > 2000:
-            # Silently truncate instead of rejecting — don't penalize verbose agents
-            action['fix_code'] = fix[:2000]
 
     elif atype == 'detect_gap':
         rl = action.get('risk_level', '')
@@ -216,6 +214,24 @@ def _domain_check(action: Dict, atype: str) -> list:
             errors.append({'field': 'code_changes', 'issue': 'must be a dict of {break_id: fix_description}'})
 
     return errors
+
+
+def _domain_check(action: Dict, atype: str) -> list:
+    """Check values are within allowed ranges/enums. Returns list of error dicts."""
+    # Handle mutations first (cannot be purely cached)
+    if atype in ('propose_fix', 'revise_fix'):
+        fix = action.get('fix_code', '')
+        if len(fix) > 2000:
+            # Silently truncate instead of rejecting — don't penalize verbose agents
+            action['fix_code'] = fix[:2000]
+
+    # Use cached pure function for validation
+    try:
+        action_json = json.dumps(action, sort_keys=True)
+        return _cached_domain_errors(action_json, atype)
+    except Exception:
+        # Fallback if not serializable
+        return _cached_domain_errors(json.dumps({'dummy': True}), atype)
 
 
 def _domain_hint(atype: str, errors: list) -> str:

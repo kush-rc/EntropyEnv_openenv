@@ -39,30 +39,49 @@ def _score_identify(action: Dict, case: Dict) -> float:
 
 
 def _score_propose(action: Dict, case: Dict) -> float:
-    """Score proposed fix. Checks token coverage and identifier preservation."""
+    """Score proposed fix. Checks token coverage, identifier preservation, and explanation."""
     tokens = case.get('required_fix_tokens', [])
     if isinstance(tokens, dict):
         tokens = tokens.get(case.get('expected_vuln_type', ''), [])
-    # Safety: flatten to list of strings only
-    tokens = [t for t in tokens if isinstance(t, str)]
+    
+    # Flatten nested lists and ensure all strings
+    def flatten(lst):
+        result = []
+        for item in lst:
+            if isinstance(item, list):
+                result.extend(flatten(item))
+            elif isinstance(item, str):
+                result.append(item)
+        return result
+
+    tokens = flatten(tokens) if isinstance(tokens, list) else []
 
     fix = action.get('fix_code', '')
     if not fix:
         return 0.0
 
-    # Token coverage: allow missing 1 token to still get full score
-    if not tokens:
-        coverage = 0.5
-    else:
-        divisor = max(1, len(tokens) - 1)
-        coverage = min(1.0, sum(1 for t in tokens if t.lower() in fix.lower()) / divisor)
+    # Token coverage (60%)
+    divisor = max(1, len(tokens) - 1)
+    coverage = min(1.0, sum(1 for t in tokens if t.lower() in fix.lower()) / divisor) if tokens else 0.5
 
-    # Identifier preservation: did the fix keep the key function name?
+    # Identifier preservation (10%)
     key_id = case.get('must_preserve_identifier', '')
-    preservation = 0.15 if key_id and key_id in fix else 0.0
+    preservation = 0.10 if key_id and key_id in fix else 0.0
 
-    # Floor: any non-empty fix_code gets at least 0.25 (agent showed correct workflow)
-    return max(0.25, safe_score(coverage + preservation))
+    # NEW: Explanation quality (30%)
+    explanation = action.get('explanation', '')
+    exp_score = 0.0
+    if explanation:
+        keywords = ['prevent', 'secure', 'validate', 'sanitize', 'parameterize']
+        exp_score = sum(0.06 for kw in keywords if kw in explanation.lower())
+        if len(explanation) < 20:
+            exp_score -= 0.05
+        vuln_type = case.get('expected_vuln_type', '').replace('_', ' ')
+        if vuln_type in explanation.lower():
+            exp_score += 0.10
+
+    # Combine: 60% code, 30% explanation, 10% identifier
+    return max(0.25, safe_score(coverage * 0.60 + exp_score * 0.30 + preservation * 0.10))
 
 
 def _score_revise(action: Dict, case: Dict) -> float:

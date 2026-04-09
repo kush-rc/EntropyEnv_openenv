@@ -30,6 +30,8 @@ Most existing RL benchmarks test agents on **static, single-turn tasks** — cla
 
 ## 🎯 What Is This?
 
+![Gradio UI Run History](docs/screenshot.png)
+
 This is a **training gym for AI agents** — not the agent itself.
 Think of it like a driving test course: you build the course, and different AI "drivers" take the test.
 
@@ -66,7 +68,7 @@ Agents must identify vulnerabilities in code snippets, propose fixes, and iterat
 | `sec_medium` | Medium | `multi` | 6 | 0.75 | `identify` → `propose_fix` → `revise_fix` |
 | `sec_hard` | Hard | `adversarial` | 8 | 0.70 | `identify` → `propose_fix` → `revise_fix` (reviewer) |
 
-**Dataset:** 10 ground-truth cases covering SQL injection, XSS, IDOR, hardcoded secrets, missing auth, JWT misuse, path traversal, SSRF.
+**Dataset:** 13 ground-truth cases covering SQL injection, XSS, IDOR, hardcoded secrets, missing auth, JWT misuse, path traversal, SSRF, XXE.
 
 ### 📦 Domain 2: PyTorch Migration Time-Machine
 
@@ -78,7 +80,7 @@ Agents must detect deprecated APIs, resolve version conflicts, and fix `torch.co
 | `dep_medium` | Medium | `resolve` | 6 | 0.75 | `resolve_conflict` |
 | `dep_hard` | Hard | `migrate` | 8 | 0.70 | `migrate_api` / `validate_tree` |
 
-**Dataset:** 10 ground-truth cases covering Variable, cuda(), DataParallel, ONNX export, torch.compile graph-breaks.
+**Dataset:** 13 ground-truth cases covering Variable, cuda(), DataParallel, ONNX export, torch.compile graph-breaks.
 
 ### 🏥 Domain 3: Clinical Workflow Chaos Simulator
 
@@ -90,7 +92,7 @@ Agents must detect missing steps in hospital workflows, rank them by priority, a
 | `cli_medium` | Medium | 6 | 0.75 | `detect_gap` → `rank_issues` |
 | `cli_hard` | Hard | 6 | 0.70 | `detect_gap` → `rank_issues` → `order_steps` |
 
-**Dataset:** 10 ground-truth cases covering surgery prep, ER triage, chemotherapy, cardiac emergency, blood transfusion.
+**Dataset:** 13 ground-truth cases covering surgery prep, ER triage, chemotherapy, cardiac emergency, blood transfusion, organ transplant, stroke code.
 
 ---
 
@@ -225,9 +227,9 @@ project-root/
 │   │   ├── dependency_grader.py # F1 scoring, version checking, graph ordering
 │   │   └── clinical_grader.py  # F1, NDCG ranking, dependency-violation counting
 │   └── datasets/
-│       ├── security_cases.py   # 10 cases: SQL injection, XSS, IDOR, SSRF, etc.
-│       ├── dependency_cases.py # 10 cases: Variable, cuda(), DataParallel, graph-breaks
-│       └── clinical_cases.py   # 10 cases: surgery prep, ER triage, chemo, cardiac
+│       ├── security_cases.py   # 13 cases: SQL injection, XSS, IDOR, SSRF, XXE, etc.
+│       ├── dependency_cases.py # 13 cases: Variable, cuda(), DataParallel, graph-breaks
+│       └── clinical_cases.py   # 13 cases: surgery prep, ER triage, chemo, cardiac, transplant
 └── results/
     └── run_history.json        # Persistent benchmark results (auto-created)
 ```
@@ -337,9 +339,9 @@ Tested with multiple model families for universal compatibility:
 
 | Model | Family | Parameters | Average Score |
 |-------|--------|------------|---------------|
-| Llama 3.3 70B | Meta | 70B | **0.97** |
-| Qwen3-32B | Alibaba | 32B | **0.99** |
-| DeepSeek V3.2 | DeepSeek | MoE | **0.96** |
+| Llama 3.3 70B | Meta | 70B | **0.87** |
+| Qwen3-32B | Alibaba | 32B | **0.89** |
+| DeepSeek V3.2 | DeepSeek | MoE | **0.86** |
 
 The environment provides smooth reward gradients that enable GRPO training of smaller models (8B+).
 

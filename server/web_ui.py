@@ -125,8 +125,8 @@ def run_single_task(task_id: str):
         logs.append(f'  Step {step + 1}: action={atype}  reward={reward:.4f}  done={done}')
         step += 1
 
-    total = round(sum(rewards), 4)
-    logs.append(f'[END] total_reward={total}  steps={step}')
+    total = round(sum(rewards) / max(len(rewards), 1), 4)
+    logs.append(f'[END] avg_reward={total}  steps={step}')
     return '\n'.join(logs), rewards, total
 
 
@@ -146,7 +146,7 @@ def run_task_ui(task_id: str, model_name: str):
     info = TASK_INFO.get(task_id, {})
     domain = info.get('domain', 'Unknown')
     difficulty = task_id.split('_')[1].upper()
-    score = min(max(total / max(len(rewards), 1), 0), 1)
+    score = min(max(total / max(len(rewards), 1), 0.01), 0.99)
 
     score_md = f'''### ✅ Results
 | Field | Value |
@@ -181,7 +181,7 @@ def run_all_tasks_ui(model_name: str):
     for task_id in tasks:
         log_str, rewards, total = run_single_task(task_id)
         all_logs.append(log_str)
-        score = min(max(total / max(len(rewards), 1), 0), 1)
+        score = min(max(total / max(len(rewards), 1), 0.01), 0.99)
         all_scores[task_id] = round(score, 4)
 
     full_log = '\n\n'.join(all_logs)
@@ -253,7 +253,7 @@ def build_ui():
 **A multi-domain RL environment for training AI agents on real-world tasks.**
 
 This environment tests AI agents across **3 domains** with **9 tasks** of increasing difficulty.
-Agents receive observations (problems), send actions (answers), and get reward scores (0.0 – 1.0).
+Agents receive observations (problems), send actions (answers), and get reward scores (0.01 – 0.99).
 ''')
 
         with gr.Tab('🎯 Single Task'):
@@ -320,7 +320,7 @@ via the API, and it gets scored on how well it solves real-world tasks.
 1. Agent calls POST /reset with a task_id → Gets an observation (the problem)
 2. Agent analyzes the observation and sends POST /step with its action
 3. Environment validates the action and grades it
-4. Returns a reward score (0.0 – 1.0) and the next observation
+4. Returns a reward score (0.01 – 0.99) and the next observation
 5. Repeat until the episode ends (done=true) or max steps reached
 ```
 
@@ -332,7 +332,7 @@ via the API, and it gets scored on how well it solves real-world tasks.
 | 🏥 **Clinical** | cli_easy, cli_medium, cli_hard | Detect workflow gaps, rank by priority, plan recovery |
 
 ### Reward Signals
-- Scores range from **0.0** (completely wrong) to **1.0** (perfect)
+- Scores range from **0.01** (completely wrong) to **0.99** (near-perfect)
 - Partial credit is awarded for partially correct answers
 - Invalid or malformed actions receive lower scores
 - The environment provides feedback on validation failures to help agents improve

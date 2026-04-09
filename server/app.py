@@ -20,6 +20,26 @@ from .datasets.clinical_cases import CLINICAL_CASES
 
 app = FastAPI(title='Multi-Agent Dev Tools Environment')
 
+from collections import defaultdict
+from time import time
+
+# Global rate limiter (simple token bucket)
+RATE_LIMITS = defaultdict(lambda: {'tokens': 10, 'last_refill': time()})
+
+def check_rate_limit(ip: str) -> bool:
+    """Returns True if request allowed, False if rate limited."""
+    bucket = RATE_LIMITS[ip]
+    now = time()
+    elapsed = now - bucket['last_refill']
+    refill = int(elapsed / 6)
+    if refill > 0:
+        bucket['tokens'] = min(10, bucket['tokens'] + refill)
+        bucket['last_refill'] = now
+    if bucket['tokens'] > 0:
+        bucket['tokens'] -= 1
+        return True
+    return False
+
 # ── Load Debug Panel HTML ──
 _DEBUG_HTML_PATH = os.path.join(os.path.dirname(__file__), 'debug_panel.html')
 
@@ -105,6 +125,16 @@ async def health(request: Request):
 @app.post('/reset')
 async def reset(request: Request):
     """Create a new episode for a task. Returns episode_id + initial observation."""
+    
+    # Get client IP
+    ip = request.client.host if request.client else '127.0.0.1'
+    if not check_rate_limit(ip):
+        return JSONResponse(status_code=200, content={
+            'error': 'Rate limit exceeded. Max 10 requests/minute.',
+            'done': True,
+            'observation': {},
+        })
+        
     try:
         body = await request.json()
         task_id = body.get('task_id', 'sec_easy')
@@ -123,9 +153,10 @@ async def reset(request: Request):
         SESSIONS[session.episode_id] = session
 
         # Cleanup old done sessions to prevent memory leaks on HF Spaces
-        done_ids = [eid for eid, s in SESSIONS.items() if s.done]
-        for eid in done_ids:
-            del SESSIONS[eid]
+        if len(SESSIONS) > 100 or random.random() < 0.1:
+            done_ids = [eid for eid, s in SESSIONS.items() if s.done]
+            for eid in done_ids:
+                SESSIONS.pop(eid, None)
 
         obs = build_initial_obs(session)
 
@@ -138,7 +169,7 @@ async def reset(request: Request):
             'error': str(e),
             'observation': {},
             'done': True,
-            'reward': 0.0,
+            'reward': 0.01,
         })
 
 
@@ -152,7 +183,7 @@ async def step(request: Request):
 
         if not session:
             return JSONResponse(status_code=200, content={
-                'reward': 0.0,
+                'reward': 0.01,
                 'done': True,
                 'error': 'unknown episode_id',
                 'observation': {},
@@ -160,7 +191,7 @@ async def step(request: Request):
 
         if session.done:
             return JSONResponse(status_code=200, content={
-                'reward': 0.0,
+                'reward': 0.01,
                 'done': True,
                 'observation': {'message': 'Episode already complete.'},
             })
@@ -168,9 +199,9 @@ async def step(request: Request):
         # Run pre-action validation
         valid, val_obs = validate_action(body, session)
         if not valid:
-            last_r = 0.0
+            last_r = 0.01
             if session.history:
-                last_r = session.history[-1].get('reward', 0.0)
+                last_r = max(0.01, session.history[-1].get('reward', 0.01))
             return {
                 'reward': last_r,
                 'done': False,
@@ -189,17 +220,19 @@ async def step(request: Request):
 
         # Enrich observation with strategic context
         step_obs = result.get('observation', {})
-        step_obs['task_type'] = session.task_type
-        step_obs['task_id'] = session.task_id
-        step_obs['step_count'] = session.step_count
         task_max = DOMAIN_MAX_STEPS.get(session.task_type, 8)
-        step_obs['max_steps'] = task_max
-        step_obs['previous_reward'] = round(float(result.get('reward', 0.0)), 4)
-        step_obs['steps_remaining'] = max(0, task_max - session.step_count)
-        step_obs['reward_so_far'] = round(session.reward_acc, 4)
-        step_obs['trajectory_score'] = round(
-            session.reward_acc / max(session.step_count, 1), 4
-        )
+        enrichment = {
+            'task_type': session.task_type,
+            'task_id': session.task_id,
+            'step_count': session.step_count,
+            'max_steps': task_max,
+            'previous_reward': round(float(result.get('reward', 0.0)), 4),
+            'steps_remaining': max(0, task_max - session.step_count),
+            'reward_so_far': round(session.reward_acc, 4),
+            'trajectory_score': round(session.reward_acc / max(session.step_count, 1), 4),
+        }
+        for k, v in enrichment.items():
+            step_obs.setdefault(k, v)
 
         # Turn guidance — tell agent what to do next
         last_action = body.get('action_type', '')
@@ -223,14 +256,14 @@ async def step(request: Request):
             SESSIONS.pop(session.episode_id, None)
 
         return {
-            'reward': round(float(result.get('reward', 0.0)), 4),
+            'reward': round(min(max(float(result.get('reward', 0.01)), 0.01), 0.99), 4),
             'done': bool(result.get('done', False)),
             'observation': step_obs,
             'info': {'validation_failed': step_obs.get('validation_failed', False)},
         }
     except Exception as e:
         return JSONResponse(status_code=200, content={
-            'reward': 0.0,
+            'reward': 0.01,
             'done': True,
             'error': str(e),
             'observation': {},
@@ -326,7 +359,7 @@ async def run_inference(request: Request):
                     try:
                         final_scores[task_id] = float(total_reward)
                     except ValueError:
-                        final_scores[task_id] = 0.0
+                        final_scores[task_id] = 0.01
 
         # Also try final JSON summary line
         for line in reversed(stdout.splitlines()):
@@ -342,7 +375,7 @@ async def run_inference(request: Request):
 
         avg = (
             round(sum(final_scores.values()) / len(final_scores), 4)
-            if final_scores else 0.0
+            if final_scores else 0.01
         )
 
         return JSONResponse(status_code=200, content={
@@ -419,7 +452,7 @@ def _run_single_task_inline(task_id, api_base, api_key, model_id, system_prompt)
         msg = f'[ERROR] OpenAI client init failed: {e}'
         logs.append(msg)
         yield {'type': 'log', 'level': 'err', 'msg': msg}
-        yield {'type': 'task_done', 'task_id': task_id, 'score': 0.0, 'logs': logs}
+        yield {'type': 'task_done', 'task_id': task_id, 'score': 0.01, 'logs': logs}
         return
 
     # Reset
@@ -430,7 +463,7 @@ def _run_single_task_inline(task_id, api_base, api_key, model_id, system_prompt)
         msg = f'[ERROR] Reset failed: {e}'
         logs.append(msg)
         yield {'type': 'log', 'level': 'err', 'msg': msg}
-        yield {'type': 'task_done', 'task_id': task_id, 'score': 0.0, 'logs': logs}
+        yield {'type': 'task_done', 'task_id': task_id, 'score': 0.01, 'logs': logs}
         return
 
     ep_id = data.get('episode_id', 'unknown')
@@ -447,16 +480,21 @@ def _run_single_task_inline(task_id, api_base, api_key, model_id, system_prompt)
 
     while not done and len(rewards) < max_steps:
         step_num = len(rewards) + 1
-        # Build focused prompt with history context
-        obs_text = json.dumps(obs, default=str)
-        if len(obs_text) > 1500:
-            obs_text = obs_text[:1500] + '...'
+        # Build focused prompt with smart truncation (matches inference.py)
+        obs_copy = dict(obs)
+        compat_matrix = obs_copy.pop('compatibility_matrix', None)
+        dep_graph = obs_copy.pop('dependency_graph', None)
+        core_text = json.dumps(obs_copy, default=str, indent=2)
         user_parts = [f'Step {step_num} | Observation:']
         if history:
             user_parts.append(f'Previous actions: {[h["action_type"] for h in history]}')
-            if history[-1]['reward'] == 0.0:
-                user_parts.append('WARNING: Last action scored 0.0 — do NOT repeat it.')
-        user_parts.append(obs_text)
+            if history[-1]['reward'] < 0.4:
+                user_parts.append('⚠️ Low score. Try different approach.')
+        user_parts.append(core_text)
+        if compat_matrix:
+            user_parts.append(f'\nCompatibility Matrix:\n{json.dumps(compat_matrix, indent=2)}')
+        if dep_graph:
+            user_parts.append(f'\nDependency Graph:\n{json.dumps(dep_graph, indent=2)}')
         user_parts.append('Output ONLY a single JSON object:')
         messages.append({'role': 'user', 'content': '\n'.join(user_parts)})
 
@@ -519,8 +557,8 @@ def _run_single_task_inline(task_id, api_base, api_key, model_id, system_prompt)
         logs.append(msg)
         yield {'type': 'log', 'level': 'info', 'msg': msg}
 
-    # Sum the rewards for multi-turn accumulation — same logic as inference.py
-    total_reward = sum(rewards) if rewards else 0.01
+    # Average rewards — same logic as inference.py
+    total_reward = sum(rewards) / max(len(rewards), 1) if rewards else 0.01
     score = round(min(max(total_reward, 0.01), 0.99), 4)
     success = score > 0.0
     rewards_str = ','.join(f'{r:.2f}' for r in rewards)
@@ -560,7 +598,7 @@ def run_benchmark(body: dict):
                     scores[task_id] = event['score']
                 yield f"data: {json.dumps(event)}\n\n"
 
-        avg = round(sum(scores.values()) / len(scores), 4) if scores else 0.0
+        avg = round(sum(scores.values()) / len(scores), 4) if scores else 0.01
 
         result = {
             'model_name': model_name,

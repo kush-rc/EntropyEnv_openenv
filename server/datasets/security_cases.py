@@ -207,5 +207,81 @@ def get_document(doc_id: int, request: Request):
     return get_user(user_id)''',
             'task_description': 'Rewrite this JWT authentication to prevent algorithm confusion attacks while preserving user lookup logic.',
         },
+        {
+            'case_id': 'sec_hard_003',
+            'task_subtype': 'adversarial',
+            'completion_threshold': 0.70,
+            'max_steps': 8,
+            'done_conditions': {'min_actions': 3, 'required_sequence': ['identify_vulnerability', 'propose_fix', 'revise_fix']},
+            'expected_vuln_type': 'xxe',
+            'cvss_range': [7.0, 9.5],
+            'expected_severity': 'high',
+            'required_fix_tokens': ['disable', 'external', 'entities'],
+            'must_preserve_identifier': 'parse_xml',
+            'current_feedback_keywords': ['xxe', 'entity', 'external'],
+            'original_vuln_pattern': 'allow_external_entities=True',
+            'reviewer_feedback': 'Fix disables DTD but doesn\'t disable external entities. Set both to False.',
+            'reviewer_feedback_sequence': [
+                'Fix disables DTD but doesn\'t disable external entities. Set both to False.',
+                'Better, but you should also validate XML schema against a whitelist.',
+            ],
+            'tool_call': '''def parse_xml(xml_string):
+    import xml.etree.ElementTree as ET
+    parser = ET.XMLParser()  # Default parser allows XXE
+    tree = ET.fromstring(xml_string, parser)
+    return tree.findall('.//user/name')''',
+            'task_description': 'Fix the XXE vulnerability in this XML parser while preserving all business logic. Reviewer will test your fix against attack payloads.',
+        },
+        {
+            'case_id': 'sec_hard_004',
+            'task_subtype': 'adversarial',
+            'completion_threshold': 0.70,
+            'max_steps': 8,
+            'done_conditions': {'min_actions': 3, 'required_sequence': ['identify_vulnerability', 'propose_fix', 'revise_fix']},
+            'expected_vuln_type': 'ssrf',
+            'cvss_range': [7.5, 9.0],
+            'expected_severity': 'critical',
+            'required_fix_tokens': ['allowlist', 'private', 'ip'],
+            'must_preserve_identifier': 'fetch_webhook',
+            'current_feedback_keywords': ['ssrf', 'internal', 'network'],
+            'original_vuln_pattern': 'requests.get(url)',
+            'reviewer_feedback': 'Fix blocks 127.0.0.1 but allows localhost and private IPs (10.x, 172.x, 192.168.x).',
+            'reviewer_feedback_sequence': [
+                'Fix blocks 127.0.0.1 but allows localhost and private IPs (10.x, 172.x, 192.168.x).',
+                'Good, but you should also block IPv6 loopback (::1) and link-local addresses.',
+            ],
+            'tool_call': '''def fetch_webhook(url):
+    import requests
+    # Webhook URL from user input
+    response = requests.get(url, timeout=10)
+    return response.json()''',
+            'task_description': 'Prevent SSRF attacks on this webhook fetcher. Reviewer will try internal network access bypasses.',
+        },
+        {
+            'case_id': 'sec_hard_005',
+            'task_subtype': 'adversarial',
+            'completion_threshold': 0.70,
+            'max_steps': 8,
+            'done_conditions': {'min_actions': 3, 'required_sequence': ['identify_vulnerability', 'propose_fix', 'revise_fix']},
+            'expected_vuln_type': 'idor',
+            'cvss_range': [6.0, 8.5],
+            'expected_severity': 'high',
+            'required_fix_tokens': ['owner', 'session', 'user_id'],
+            'must_preserve_identifier': 'update_profile',
+            'current_feedback_keywords': ['idor', 'authorization', 'owner'],
+            'original_vuln_pattern': 'profile_id from request',
+            'reviewer_feedback': 'Fix checks profile ownership but uses user_id from request body (attacker-controlled).',
+            'reviewer_feedback_sequence': [
+                'Fix checks profile ownership but uses user_id from request body (attacker-controlled).',
+                'Better, but session validation is weak. Use cryptographic session tokens, not just user_id in cookie.',
+            ],
+            'tool_call': '''@app.post("/profile/update")
+def update_profile(profile_id: int, user_id: int, data: dict):
+    # user_id comes from request body (!)
+    profile = db.profiles.find_one({"_id": profile_id})
+    profile.update(data)
+    return {"status": "updated"}''',
+            'task_description': 'Fix IDOR vulnerability allowing users to edit others\' profiles. Reviewer will test horizontal privilege escalation.',
+        },
     ],
 }

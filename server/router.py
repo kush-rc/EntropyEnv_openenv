@@ -19,7 +19,7 @@ def route_step(session: SessionState, action: Dict) -> Dict:
     grader = GRADERS.get(session.task_type)
     if not grader:
         return {
-            'reward': 0.0,
+            'reward': 0.01,
             'done': True,
             'observation': {'error': f'Unknown task_type: {session.task_type}'},
         }
@@ -37,6 +37,7 @@ def route_step(session: SessionState, action: Dict) -> Dict:
 
     # Score breakdown for debugging and UI
     score_details = _compute_score_details(action, session)
+    obs['score_breakdown'] = score_details
 
     return {
         'episode_id': session.episode_id,
@@ -58,6 +59,12 @@ def _check_done(session: SessionState, action: Dict, reward: float, max_steps: i
     """
     next_step = session.step_count + 1
     case = session.task_case
+
+    # Mastery condition: high performance -> early exit
+    if next_step >= 2:
+        avg_reward = (session.reward_acc + reward) / next_step
+        if avg_reward >= 0.90:
+            return True
 
     # Always done if max steps reached
     if next_step >= max_steps:

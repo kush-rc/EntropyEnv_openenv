@@ -84,69 +84,84 @@ CRITICAL: Output ONLY the JSON object. Nothing before or after it.
 
 
 def build_user_prompt(step_num: int, obs: dict, history: list) -> str:
-    """Build a focused user prompt from observation and history.
-    Works with ALL models — keeps context compact to avoid truncation.
-    """
     task_type = obs.get("task_type", "unknown")
     task_id   = obs.get("task_id", "unknown")
     task_sub  = obs.get("task_subtype", "")
 
     parts = [f"Step {step_num} | task_type={task_type} | task_id={task_id} | subtype={task_sub}"]
 
-    # History summary — short to avoid confusing models
+    # History summary
     if history:
         used = [h["action_type"] for h in history]
         last = history[-1]
-        parts.append(f"Actions used so far: {used}")
+        parts.append(f"Actions used: {used}")
         parts.append(f"Last reward: {last['reward']:.2f}")
-        if last["reward"] == 0.0:
-            parts.append("WARNING: Last action scored 0.0 — it was wrong or invalid. Do NOT repeat it.")
-        elif last["reward"] < 0.4:
-            parts.append(f"WARNING: Low score ({last['reward']:.2f}). Try a better approach.")
+        if last["reward"] < 0.4:
+            parts.append(f"⚠️ Low score. Try different approach.")
 
-    # Validation failure — show prominently
+    # Validation failure
     if obs.get("validation_failed"):
-        parts.append(f"\nACTION VALIDATION FAILED!")
-        parts.append(f"Error: {obs.get('message', 'unknown error')}")
-        hint = obs.get("hint", obs.get("available_actions", ""))
-        parts.append(f"Hint: {hint}")
-        parts.append("Fix your JSON and try again with a VALID action.")
+        parts.append(f"\n❌ VALIDATION FAILED!")
+        parts.append(f"Error: {obs.get('message', 'unknown')}")
+        parts.append(f"Fix: {obs.get('hint', '')}")
 
-    # Reviewer feedback for security tasks
+    # Reviewer feedback
     if obs.get("reviewer_feedback"):
-        parts.append(f"\nREVIEWER FEEDBACK (address this in your revise_fix):")
+        parts.append(f"\n📝 REVIEWER FEEDBACK:")
         parts.append(obs["reviewer_feedback"])
 
-    # Full observation — separate compat matrix to avoid truncation
+    # SMART TRUNCATION: Separate critical fields
     obs_copy = dict(obs)
-    compat = obs_copy.pop("compatibility_matrix", None)
-    obs_text = json.dumps(obs_copy, default=str)
-    if len(obs_text) > 1800:
-        obs_text = obs_text[:1800] + "..."
-    parts.append(f"\nObservation:\n{obs_text}")
+    
+    # Extract large fields that agents NEED
+    compat_matrix = obs_copy.pop("compatibility_matrix", None)
+    dep_graph = obs_copy.pop("dependency_graph", None)
+    
+    # Core observation (always include)
+    core_text = json.dumps(obs_copy, default=str, indent=2)
+    parts.append(f"\nObservation:\n{core_text}")
+    
+    # Compatibility matrix (for dep tasks) - don't truncate
+    if compat_matrix:
+        # Format nicely so model can parse
+        parts.append(f"\nCompatibility Matrix (use this to resolve conflicts):")
+        for pkg, versions in compat_matrix.items():
+            parts.append(f"  {pkg}:")
+            for ver, deps in versions.items():
+                if deps:
+                    parts.append(f"    {ver} → requires {deps}")
+                else:
+                    parts.append(f"    {ver} → (no deps)")
+    
+    # Dependency graph (for cli tasks)
+    if dep_graph:
+        parts.append(f"\nDependency Graph (prerequisites must come first):")
+        for step, prereqs in dep_graph.items():
+            if prereqs:
+                parts.append(f"  {step} requires: {prereqs}")
+            else:
+                parts.append(f"  {step} → (no prereqs)")
 
-    if compat:
-        parts.append(f"\nCompatibility Matrix (use this to choose correct versions):\n{json.dumps(compat, indent=2)}")
-
-    # Next action hint — helps ALL models stay on track
+    # Next action hint
     if task_type == "security":
         used_types = [h["action_type"] for h in history]
-        if not history or "identify_vulnerability" not in used_types:
-            parts.append("\nNEXT ACTION: identify_vulnerability")
+        if not used_types or "identify_vulnerability" not in used_types:
+            parts.append("\n➡️ NEXT: identify_vulnerability")
         elif "propose_fix" not in used_types:
-            parts.append("\nNEXT ACTION: propose_fix")
+            parts.append("\n➡️ NEXT: propose_fix")
         else:
-            parts.append("\nNEXT ACTION: revise_fix (address the reviewer_feedback)")
+            parts.append("\n➡️ NEXT: revise_fix (address reviewer_feedback)")
+    
     elif task_type == "clinical":
         used_types = [h["action_type"] for h in history]
         if "detect_gap" not in used_types:
-            parts.append("\nNEXT ACTION: detect_gap")
+            parts.append("\n➡️ NEXT: detect_gap")
         elif "rank_issues" not in used_types:
-            parts.append("\nNEXT ACTION: rank_issues (use the step IDs from available_steps)")
+            parts.append("\n➡️ NEXT: rank_issues")
         elif "order_steps" not in used_types:
-            parts.append("\nNEXT ACTION: order_steps (respect dependency_graph ordering)")
+            parts.append("\n➡️ NEXT: order_steps (respect dependency_graph)")
 
-    parts.append("\nOutput ONLY a single JSON object:")
+    parts.append("\n📤 Output ONLY a single JSON object:")
     return "\n".join(parts)
 
 
@@ -217,8 +232,8 @@ def run_task(client: OpenAI, task_id: str) -> float:
     if "error" in data and not data.get("episode_id"):
         # ── MANDATORY: [START] line even on error ──
         print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}", flush=True)
-        print(f"[END] success=false steps=0 score=0.00 rewards=", flush=True)
-        return 0.0
+        print(f"[END] success=false steps=0 score=0.01 rewards=", flush=True)
+        return 0.01
 
     episode_id = data.get("episode_id", "unknown")
     obs = data.get("observation", data)
@@ -258,10 +273,11 @@ def run_task(client: OpenAI, task_id: str) -> float:
             step_resp = requests.post(f"{ENV_URL}/step", json=action, timeout=30)
             step_data = step_resp.json()
         except Exception as e:
-            error_msg = str(e)
-            # ── MANDATORY [STEP] line on connection error ──
-            print(f"[STEP] step={step_num} action={action_type} reward=0.00 done=true error={error_msg}", flush=True)
-            rewards.append(0.0)
+            error_msg = str(e)[:100]  # Truncate long errors
+            # Give the agent credit for steps completed so far
+            print(f"[STEP] step={step_num} action={action_type} reward=0.01 done=true error={error_msg}", flush=True)
+            rewards.append(0.01)
+            done = True
             break
 
         reward = float(step_data.get("reward", 0.0))
@@ -285,8 +301,8 @@ def run_task(client: OpenAI, task_id: str) -> float:
         if done:
             break
 
-    # Sum the rewards for multi-turn accumulation
-    total_reward = sum(rewards) if rewards else 0.01
+    # Average gives partial credit for completed steps before crash
+    total_reward = sum(rewards) / max(len(rewards), 1) if rewards else 0.01
     score = round(min(max(total_reward, 0.01), 0.99), 4)
     success = score > 0.0
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
@@ -320,8 +336,8 @@ def main() -> None:
             scores[task_id] = run_task(client, task_id)
         except Exception as e:
             print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}", flush=True)
-            print(f"[END] success=false steps=0 score=0.00 rewards=", flush=True)
-            scores[task_id] = 0.0
+            print(f"[END] success=false steps=0 score=0.01 rewards=", flush=True)
+            scores[task_id] = 0.01
 
     avg = round(sum(scores.values()) / max(len(scores), 1), 2)
     print(f"\n✅ All tasks complete! Average: {avg:.2f}", flush=True)

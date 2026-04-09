@@ -276,5 +276,153 @@ def training_step(model, x, labels):
             ],
             'task_description': 'Fix all 4 graph-break patterns in this compiled training step. Dependencies must be resolved in order.',
         },
+        {
+            'case_id': 'dep_hard_003',
+            'task_subtype': 'migrate',
+            'completion_threshold': 0.70,
+            'max_steps': 8,
+            'done_conditions': {'min_actions': 2, 'required_sequence': ['migrate_api']},
+            'graph_breaks': ['break_x', 'break_y', 'break_z'],
+            'checklist_dependency_graph': {
+                'break_z': ['break_x'],  # z depends on x
+                'break_y': [],           # y is independent
+                'break_x': [],           # x is independent
+            },
+            'correct_fix_map': {
+                'break_x': 'tensor.numel()',
+                'break_y': 'torch.jit.script',
+                'break_z': 'torch.no_grad()',
+            },
+            'code_snippet': '''import torch
+
+@torch.compile
+def forward(x, mask):
+    # break_x: tensor.size() returns Python int (graph break)
+    n = x.size(0) * x.size(1)
+    
+    # break_y: Python function call inside compile
+    def custom_fn(t):
+        return t * 2
+    x = custom_fn(x)
+    
+    # break_z: gradient tracking inside compiled region
+    with torch.enable_grad():  # breaks graph
+        x = x * mask
+    
+    return x''',
+            'break_descriptions': [
+                'break_x: line 6 — tensor.size() returns Python int, use tensor.numel() instead',
+                'break_y: line 10 — Python function call, use torch.jit.script decorator',
+                'break_z: line 14 — enable_grad inside compile, use torch.no_grad() for inference',
+            ],
+            'graph_break_report': [
+                'break_x: line 6 — tensor.size() returns Python int, use tensor.numel() instead',
+                'break_y: line 10 — Python function call, use torch.jit.script decorator',
+                'break_z: line 14 — enable_grad inside compile, use torch.no_grad() for inference',
+            ],
+            'task_description': 'Fix torch.compile graph breaks in this custom layer. Note dependency: break_z needs break_x fixed first.',
+        },
+        {
+            'case_id': 'dep_hard_004',
+            'task_subtype': 'migrate',
+            'completion_threshold': 0.70,
+            'max_steps': 8,
+            'done_conditions': {'min_actions': 2, 'required_sequence': ['migrate_api']},
+            'graph_breaks': ['break_alpha', 'break_beta', 'break_gamma', 'break_delta'],
+            'checklist_dependency_graph': {
+                'break_delta': ['break_beta', 'break_gamma'],  # delta needs both
+                'break_gamma': ['break_alpha'],                # gamma needs alpha
+                'break_beta': [],
+                'break_alpha': [],
+            },
+            'correct_fix_map': {
+                'break_alpha': 'torch.where',
+                'break_beta': 'tensor.shape[0]',
+                'break_gamma': 'torch.stack',
+                'break_delta': '@torch.jit.script',
+            },
+            'code_snippet': '''import torch
+
+@torch.compile(fullgraph=True)
+def loss_fn(pred, target, weights):
+    # break_alpha: if statement on tensor value
+    if target.sum() > 0:
+        pred = pred * 1.5
+    
+    # break_beta: len() on tensor
+    batch_size = len(pred)
+    
+    # break_gamma: Python list → tensor conversion
+    normalized = []
+    for i in range(batch_size):
+        normalized.append(pred[i] / weights[i])
+    result = torch.tensor(normalized)  # breaks graph
+    
+    # break_delta: calls non-scripted helper
+    def helper(x):
+        return x.clamp(0, 1)
+    return helper(result)''',
+            'break_descriptions': [
+                'break_alpha: line 6 — data-dependent control flow, use torch.where(condition, ...)',
+                'break_beta: line 10 — len() builtin on tensor, use tensor.shape[0]',
+                'break_gamma: line 16 — torch.tensor() on Python list, use torch.stack()',
+                'break_delta: line 20 — unscripted helper function, add @torch.jit.script decorator',
+            ],
+            'graph_break_report': [
+                'break_alpha: line 6 — data-dependent control flow, use torch.where(condition, ...)',
+                'break_beta: line 10 — len() builtin on tensor, use tensor.shape[0]',
+                'break_gamma: line 16 — torch.tensor() on Python list, use torch.stack()',
+                'break_delta: line 20 — unscripted helper function, add @torch.jit.script decorator',
+            ],
+            'task_description': 'Complex graph-break cascade. Delta depends on Beta AND Gamma. Gamma depends on Alpha. Fix in dependency order.',
+        },
+        {
+            'case_id': 'dep_hard_005',
+            'task_subtype': 'migrate',
+            'completion_threshold': 0.70,
+            'max_steps': 8,
+            'done_conditions': {'min_actions': 2, 'required_sequence': ['migrate_api']},
+            'graph_breaks': ['break_001', 'break_002', 'break_003'],
+            'checklist_dependency_graph': {
+                'break_003': ['break_001', 'break_002'],
+                'break_002': [],
+                'break_001': [],
+            },
+            'correct_fix_map': {
+                'break_001': 'torch.compile(disable=True)',
+                'break_002': 'functorch.vmap',
+                'break_003': 'torch.export',
+            },
+            'code_snippet': '''import torch
+from torch.nn.utils import clip_grad_norm_
+
+@torch.compile
+def training_step(model, batch, optimizer):
+    # break_001: optimizer.step() inside compiled region
+    loss = model(batch['x'], batch['y'])
+    loss.backward()
+    optimizer.step()  # graph break
+    
+    # break_002: Python loop over batch dimension
+    grads = []
+    for param in model.parameters():
+        grads.append(param.grad.norm())
+    
+    # break_003: clip_grad_norm_ mutation
+    clip_grad_norm_(model.parameters(), max_norm=1.0)  # breaks graph
+    
+    return loss.item()''',
+            'break_descriptions': [
+                'break_001: line 9 — optimizer.step() not compilable, wrap optimizer logic outside compile',
+                'break_002: line 13 — Python loop batching, use functorch.vmap for vectorization',
+                'break_003: line 17 — in-place grad clipping, use torch.export with explicit mutation tracking',
+            ],
+            'graph_break_report': [
+                'break_001: line 9 — optimizer.step() not compilable, wrap optimizer logic outside compile',
+                'break_002: line 13 — Python loop batching, use functorch.vmap for vectorization',
+                'break_003: line 17 — in-place grad clipping, use torch.export with explicit mutation tracking',
+            ],
+            'task_description': 'Fix training loop graph breaks. Optimizer, gradient accumulation, and clipping all cause compilation failures.',
+        },
     ],
 }
