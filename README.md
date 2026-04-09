@@ -33,7 +33,6 @@ Most RL benchmarks test agents on **static, single-turn tasks** — classify thi
 
 ## 🎯 What Is This?
 
-![EntropyEnv Gradio UI](docs/screenshot.png)
 
 EntropyEnv is a **training gym for AI agents** — not the agent itself.
 Think of it like a driving test course: we build the course, and different AI "drivers" take the test.
