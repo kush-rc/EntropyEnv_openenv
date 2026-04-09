@@ -30,7 +30,6 @@ Most existing RL benchmarks test agents on **static, single-turn tasks** — cla
 
 ## 🎯 What Is This?
 
-![Gradio UI Run History](docs/screenshot.png)
 
 This is a **training gym for AI agents** — not the agent itself.
 Think of it like a driving test course: you build the course, and different AI "drivers" take the test.
