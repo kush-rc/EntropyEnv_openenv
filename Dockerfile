@@ -2,7 +2,7 @@
 FROM python:3.10-slim AS builder
 WORKDIR /build
 COPY pyproject.toml .
-RUN pip install --no-cache-dir --target=/install . || pip install --no-cache-dir --target=/install fastapi uvicorn pydantic openai requests packaging gradio python-dotenv
+RUN pip install --no-cache-dir . || pip install --no-cache-dir fastapi uvicorn pydantic openai requests packaging gradio python-dotenv
 
 # Stage 2: Runtime
 FROM python:3.10-slim
@@ -12,8 +12,9 @@ LABEL openenv="true"
 
 WORKDIR /app
 
-# Copy only installed packages (not build tools)
-COPY --from=builder /install /usr/local/lib/python3.10/site-packages
+# Copy installed packages AND scripts (uvicorn binary) from builder
+COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy project files
 COPY . .
