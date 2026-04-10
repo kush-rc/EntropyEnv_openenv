@@ -1,12 +1,23 @@
 # server/router.py
 # Central dispatcher. Routes validated actions to the correct domain grader.
-# Returns rich observations with task_subtype, score_details, and data-driven done conditions.
+#
+# KEY FIX: The _check_done() mastery condition was firing after just 2 steps
+# if avg_reward >= 0.90. This caused:
+#   - sec_easy: identify_vulnerability scores 0.99 → avg = 0.99 → done=True immediately
+#   - dep_easy, cli_easy: same problem — 1-step episodes ending with 0.99
+#
+# The mastery condition is now DISABLED. Done is determined by:
+#   1. max_steps reached (hard limit)
+#   2. required_sequence fully completed (all actions in sequence done)
+#   3. completion_threshold met AND min_actions satisfied
+#
+# This forces multi-step tasks to actually run all required steps,
+# and prevents easy tasks from short-circuiting at step 1.
 
 from typing import Dict
 from .session import SessionState
 from .graders import security_grader, dependency_grader, clinical_grader
 
-# Map domain names to their grader modules
 GRADERS = {
     'security': security_grader,
     'dependency': dependency_grader,
@@ -24,18 +35,13 @@ def route_step(session: SessionState, action: Dict) -> Dict:
             'observation': {'error': f'Unknown task_type: {session.task_type}'},
         }
 
-    # Run the domain grader
     reward = grader.grade(action, session)
 
-    # Check if episode is done (data-driven from case)
     case = session.task_case
     max_steps = case.get('max_steps', 8)
     done = _check_done(session, action, reward, max_steps)
 
-    # Build the next observation (rich, self-describing)
     obs = _build_step_obs(session, action, reward, done)
-
-    # Score breakdown for debugging and UI
     score_details = _compute_score_details(action, session)
     obs['score_breakdown'] = score_details
 
@@ -50,58 +56,52 @@ def route_step(session: SessionState, action: Dict) -> Dict:
 
 
 def _check_done(session: SessionState, action: Dict, reward: float, max_steps: int) -> bool:
-    """Data-driven done condition from case definition.
-    
-    Priority order:
-    1. max steps reached (hard limit)
-    2. min_actions guard (workflow must complete before ANY early exit)
-    3. mastery early-exit (high avg reward after min_actions met)
-    4. completion_threshold met
-    5. required_sequence complete
+    """
+    Determine if the episode should end.
+
+    Rules (in priority order):
+    1. Hard limit: max_steps reached → always done
+    2. Required sequence: ALL actions in required_sequence have been called → done
+       (This is the primary completion signal for multi-step tasks)
+    3. Single-step tasks (min_actions=1): completion_threshold met → done
+    4. Otherwise: not done
+
+    REMOVED: mastery early-exit (avg_reward >= 0.90 after 2 steps).
+    That was causing 0.99 scores on step 1 for easy tasks and ending episodes immediately.
     """
     next_step = session.step_count + 1
     case = session.task_case
     done_conditions = case.get('done_conditions', {})
     min_actions = done_conditions.get('min_actions', 1)
+    required_seq = done_conditions.get('required_sequence', [])
 
-    # Always done if max steps reached
+    # Rule 1: Hard limit
     if next_step >= max_steps:
         return True
 
-    # Min actions guard — workflow MUST complete before any early exit
-    # This prevents mastery from short-circuiting cli_hard at step 2
-    if next_step < min_actions:
-        return False
+    # Build the full action history including current action
+    all_actions = session.last_actions + [action.get('action_type', '')]
 
-    # Mastery condition: high performance -> early exit (only after min_actions met)
-    if next_step >= 2:
-        avg_reward = (session.reward_acc + reward) / next_step
-        if avg_reward >= 0.90:
-            return True
-
-    # Completion threshold from case
-    threshold = case.get('completion_threshold', 0.85)
-    if reward >= threshold:
-        return True
-
-    # Required sequence check — once all required actions are done, episode ends
-    # The accumulated rewards already reflect quality; no need for a reward guard
-    required_seq = done_conditions.get('required_sequence', [])
+    # Rule 2: Required sequence complete
+    # For multi-step tasks (min_actions > 1), this is the ONLY early-exit.
+    # For single-step tasks (min_actions == 1), this also works.
     if required_seq:
-        all_actions = session.last_actions + [action.get('action_type', '')]
         seq_complete = all(a in all_actions for a in required_seq)
         if seq_complete:
+            return True
+
+    # Rule 3: Single-step tasks — threshold met
+    # Only applies if min_actions == 1 AND no required_sequence defined
+    if min_actions == 1 and not required_seq:
+        threshold = case.get('completion_threshold', 0.85)
+        if reward >= threshold:
             return True
 
     return False
 
 
 def build_initial_obs(session: SessionState) -> dict:
-    """Build the initial observation returned by /reset.
-    
-    CRITICAL: Every observation MUST include task_type, task_subtype, 
-    task_description, and available_actions with params.
-    """
+    """Build the initial observation returned by /reset."""
     case = session.task_case
     task_type = session.task_type
     task_id = session.task_id
@@ -140,7 +140,6 @@ def build_initial_obs(session: SessionState) -> dict:
             obs['conflict_packages'] = case.get('conflict_packages', [])
             obs['compatibility_matrix'] = case.get('compatibility_matrix', {})
             obs['current_requirements'] = case.get('requirements', {})
-            obs['compatibility_hint'] = 'Check torch 2.x compatibility with numpy and cuda-toolkit versions'
             obs['available_actions'] = [
                 {'name': 'resolve_conflict',
                  'params': ['packages:dict', 'reasoning:str']},
@@ -173,11 +172,7 @@ def build_initial_obs(session: SessionState) -> dict:
 
 
 def _build_step_obs(session: SessionState, action: Dict, reward: float, done: bool) -> Dict:
-    """Build observation returned after each step().
-    
-    Always includes: task_type, task_id, task_subtype, turn, done.
-    Includes domain-specific data so generic agents can navigate.
-    """
+    """Build observation returned after each step()."""
     case = session.task_case
     task_type = session.task_type
 
@@ -198,13 +193,11 @@ def _build_step_obs(session: SessionState, action: Dict, reward: float, done: bo
         obs['task_description'] = case.get('task_description', '')
         obs['code_snippet'] = case.get('tool_call', '')
         atype = action.get('action_type', '')
-        # Provide reviewer feedback after propose_fix (for medium/hard)
         if atype == 'propose_fix':
             fb = case.get('reviewer_feedback', '')
             if fb:
                 obs['reviewer_feedback'] = fb
         elif atype == 'revise_fix':
-            # For hard tasks with feedback sequence
             fb_seq = case.get('reviewer_feedback_sequence', [])
             if fb_seq:
                 fb_idx = min(len(session.history), len(fb_seq) - 1)
@@ -231,6 +224,7 @@ def _build_step_obs(session: SessionState, action: Dict, reward: float, done: bo
             ]
         elif subtype == 'resolve':
             obs['conflict_packages'] = case.get('conflict_packages', [])
+            obs['compatibility_matrix'] = case.get('compatibility_matrix', {})
             obs['available_actions'] = [
                 {'name': 'resolve_conflict', 'params': ['packages:dict', 'reasoning:str']},
             ]
@@ -257,7 +251,7 @@ def _build_step_obs(session: SessionState, action: Dict, reward: float, done: bo
 
 
 def _compute_score_details(action: Dict, session: SessionState) -> Dict[str, float]:
-    """Compute per-component score breakdown for UI display and judge transparency."""
+    """Compute per-component score breakdown for UI display."""
     atype = action.get('action_type', '')
     case = session.task_case
     details = {}
@@ -268,7 +262,7 @@ def _compute_score_details(action: Dict, session: SessionState) -> Dict[str, flo
             lo, hi = case.get('cvss_range', [0, 10])
             try:
                 v = float(action.get('cvss_score', -1))
-                details['cvss_in_range'] = 1.0 if lo <= v <= hi else (0.5 if abs(v - (lo + hi) / 2) <= 3.0 else 0.0)
+                details['cvss_in_range'] = 1.0 if lo <= v <= hi else (0.4 if abs(v - (lo + hi) / 2) <= 1.5 else 0.0)
             except (TypeError, ValueError):
                 details['cvss_in_range'] = 0.0
             details['severity_match'] = 1.0 if action.get('severity') == case.get('expected_severity') else 0.0
@@ -285,9 +279,6 @@ def _compute_score_details(action: Dict, session: SessionState) -> Dict[str, flo
             kws = case.get('current_feedback_keywords', [])
             addressed = action.get('addressed_feedback', '')
             details['feedback_addressed'] = sum(1 for kw in kws if kw.lower() in addressed.lower()) / max(len(kws), 1) if addressed else 0.0
-            orig = case.get('original_vuln_pattern', '')
-            fix = action.get('fix_code', '')
-            details['vuln_removed'] = 1.0 if orig and orig not in fix else 0.3
 
     elif session.task_type == 'dependency':
         if atype == 'flag_outdated':

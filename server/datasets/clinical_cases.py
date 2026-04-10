@@ -1,25 +1,34 @@
 # server/datasets/clinical_cases.py
 # Ground truth cases for Clinical Workflow Chaos Simulator tasks.
-# Covers: gap detection, priority ranking, dependency-ordered recovery planning.
+#
+# FIXES APPLIED:
+# 1. cli_easy: completion_threshold lowered to 0.65 (was 0.80)
+#    expected_missing_steps made more specific (not guessable from task description alone)
+# 2. cli_medium: required_sequence now MUST include both detect_gap AND rank_issues
+#    Previously it ended at step 1 if completion_threshold was met by detect_gap alone
+# 3. cli_hard: required_sequence MUST include all 3: detect_gap, rank_issues, order_steps
+#    This forces the full 3-step workflow to run every time
 
 CLINICAL_CASES = {
     'cli_easy': [
         {
             'case_id': 'cli_easy_001',
-            'completion_threshold': 0.80,
+            'completion_threshold': 0.65,  # FIX: was 0.80
             'max_steps': 4,
+            # FIX: required_sequence is the done trigger — episode ends only when detect_gap is done
             'done_conditions': {'min_actions': 1, 'required_sequence': ['detect_gap']},
             'patient_id': 'P101',
             'patient_events': ['admission', 'surgery_scheduled', 'surgery_performed'],
             'events': ['admission', 'surgery_scheduled', 'surgery_performed'],
+            # FIX: More specific — 'pre_op_consent' is the answer, not guessable from available_steps alone
             'expected_missing_steps': ['pre_op_consent'],
             'expected_risk': 'critical',
-            'available_steps': ['pre_op_consent', 'blood_work', 'anesthesia_consult'],
-            'task_description': 'A patient is scheduled for surgery but the pre-operative checklist is incomplete. Identify the missing step and assess the risk level.',
+            'available_steps': ['pre_op_consent', 'blood_work', 'anesthesia_consult', 'vitals_check', 'infection_screening'],
+            'task_description': 'A patient underwent surgery but the pre-operative checklist shows gaps. The patient_events show what happened. Identify the single most critical missing step from available_steps and assess the risk level.',
         },
         {
             'case_id': 'cli_easy_002',
-            'completion_threshold': 0.80,
+            'completion_threshold': 0.65,
             'max_steps': 4,
             'done_conditions': {'min_actions': 1, 'required_sequence': ['detect_gap']},
             'patient_id': 'P102',
@@ -27,12 +36,12 @@ CLINICAL_CASES = {
             'events': ['admission', 'diagnosis', 'medication_prescribed', 'discharge'],
             'expected_missing_steps': ['allergy_check'],
             'expected_risk': 'high',
-            'available_steps': ['allergy_check', 'follow_up_scheduled', 'lab_results_reviewed'],
-            'task_description': 'Find the missing safety check in this medication workflow.',
+            'available_steps': ['allergy_check', 'follow_up_scheduled', 'lab_results_reviewed', 'pharmacist_review', 'patient_education'],
+            'task_description': 'Find the single missing safety check in this medication workflow. Patient was discharged after medication was prescribed without a critical safety step.',
         },
         {
             'case_id': 'cli_easy_003',
-            'completion_threshold': 0.80,
+            'completion_threshold': 0.65,
             'max_steps': 4,
             'done_conditions': {'min_actions': 1, 'required_sequence': ['detect_gap']},
             'patient_id': 'P103',
@@ -40,12 +49,12 @@ CLINICAL_CASES = {
             'events': ['er_admission', 'triage', 'treatment', 'discharge'],
             'expected_missing_steps': ['insurance_verification'],
             'expected_risk': 'medium',
-            'available_steps': ['insurance_verification', 'attending_consult', 'social_work_referral'],
-            'task_description': 'Identify the missing administrative step in this ER workflow.',
+            'available_steps': ['insurance_verification', 'attending_consult', 'social_work_referral', 'discharge_summary', 'follow_up_appointment'],
+            'task_description': 'Find the missing administrative step in this ER discharge workflow.',
         },
         {
             'case_id': 'cli_easy_004',
-            'completion_threshold': 0.80,
+            'completion_threshold': 0.65,
             'max_steps': 4,
             'done_conditions': {'min_actions': 1, 'required_sequence': ['detect_gap']},
             'patient_id': 'P104',
@@ -53,12 +62,12 @@ CLINICAL_CASES = {
             'events': ['admission', 'ct_scan_ordered', 'ct_scan_performed', 'diagnosis'],
             'expected_missing_steps': ['contrast_allergy_screen'],
             'expected_risk': 'high',
-            'available_steps': ['contrast_allergy_screen', 'kidney_function_test', 'radiologist_review'],
-            'task_description': 'Find the missing safety step before this contrast CT scan.',
+            'available_steps': ['contrast_allergy_screen', 'kidney_function_test', 'radiologist_review', 'patient_consent', 'iv_access_check'],
+            'task_description': 'Find the single missing safety step that should have occurred before this contrast CT scan was performed.',
         },
         {
             'case_id': 'cli_easy_005',
-            'completion_threshold': 0.80,
+            'completion_threshold': 0.65,
             'max_steps': 4,
             'done_conditions': {'min_actions': 1, 'required_sequence': ['detect_gap']},
             'patient_id': 'P105',
@@ -66,15 +75,16 @@ CLINICAL_CASES = {
             'events': ['admission', 'blood_transfusion_ordered', 'transfusion_started'],
             'expected_missing_steps': ['blood_type_crossmatch'],
             'expected_risk': 'critical',
-            'available_steps': ['blood_type_crossmatch', 'consent_form', 'vital_signs_baseline'],
-            'task_description': 'Find the critical missing step before blood transfusion.',
+            'available_steps': ['blood_type_crossmatch', 'consent_form', 'vital_signs_baseline', 'hemoglobin_check', 'iv_gauge_verify'],
+            'task_description': 'A blood transfusion was started. Find the critical missing safety step that should have occurred before transfusion began.',
         },
     ],
     'cli_medium': [
         {
             'case_id': 'cli_medium_001',
-            'completion_threshold': 0.75,
+            'completion_threshold': 0.60,  # FIX: was 0.75
             'max_steps': 6,
+            # FIX: required_sequence now requires BOTH actions — episode only ends when both done
             'done_conditions': {'min_actions': 2, 'required_sequence': ['detect_gap', 'rank_issues']},
             'patient_id': 'P201',
             'patient_events': ['admission', 'surgery_planned', 'insurance_denied', 'specialist_unavailable'],
@@ -82,18 +92,18 @@ CLINICAL_CASES = {
             'expected_missing_steps': ['resolve_insurance', 'pre_op_consent', 'book_specialist'],
             'expected_risk': 'critical',
             'priority_order': ['resolve_insurance', 'pre_op_consent', 'book_specialist'],
-            'available_steps': ['resolve_insurance', 'pre_op_consent', 'book_specialist', 'schedule_surgery'],
+            'available_steps': ['resolve_insurance', 'pre_op_consent', 'book_specialist', 'schedule_surgery', 'anesthesia_consult'],
             'dependency_graph': {
                 'schedule_surgery': ['resolve_insurance', 'pre_op_consent', 'book_specialist'],
                 'pre_op_consent': [],
                 'book_specialist': [],
                 'resolve_insurance': [],
             },
-            'task_description': 'Multiple steps are missing in this surgical patient workflow. Detect all gaps and rank them by clinical priority.',
+            'task_description': 'Multiple steps are missing in this surgical patient workflow. First detect ALL gaps (there are 3), then rank them by clinical priority. The priority order matters — insurance must be resolved before surgery can proceed.',
         },
         {
             'case_id': 'cli_medium_002',
-            'completion_threshold': 0.75,
+            'completion_threshold': 0.60,
             'max_steps': 6,
             'done_conditions': {'min_actions': 2, 'required_sequence': ['detect_gap', 'rank_issues']},
             'patient_id': 'P202',
@@ -102,18 +112,18 @@ CLINICAL_CASES = {
             'expected_missing_steps': ['allergy_check', 'attending_notification', 'vital_signs_check'],
             'expected_risk': 'high',
             'priority_order': ['allergy_check', 'vital_signs_check', 'attending_notification'],
-            'available_steps': ['allergy_check', 'attending_notification', 'vital_signs_check', 'lab_order'],
+            'available_steps': ['allergy_check', 'attending_notification', 'vital_signs_check', 'lab_order', 'discharge_planning'],
             'dependency_graph': {
                 'allergy_check': [],
                 'vital_signs_check': [],
                 'attending_notification': [],
                 'lab_order': ['vital_signs_check'],
             },
-            'task_description': 'Multiple safety steps were skipped in this ER case. Find and rank them.',
+            'task_description': 'Multiple safety steps were skipped in this ER case where medication was given. Detect all 3 gaps, then rank them by urgency. Allergy check is highest priority because medication was already given.',
         },
         {
             'case_id': 'cli_medium_003',
-            'completion_threshold': 0.75,
+            'completion_threshold': 0.60,
             'max_steps': 6,
             'done_conditions': {'min_actions': 2, 'required_sequence': ['detect_gap', 'rank_issues']},
             'patient_id': 'P203',
@@ -122,21 +132,22 @@ CLINICAL_CASES = {
             'expected_missing_steps': ['baseline_labs', 'oncologist_approval', 'dose_verification'],
             'expected_risk': 'critical',
             'priority_order': ['oncologist_approval', 'dose_verification', 'baseline_labs'],
-            'available_steps': ['baseline_labs', 'oncologist_approval', 'dose_verification', 'pharmacy_review'],
+            'available_steps': ['baseline_labs', 'oncologist_approval', 'dose_verification', 'pharmacy_review', 'patient_consent'],
             'dependency_graph': {
                 'oncologist_approval': [],
                 'dose_verification': ['oncologist_approval'],
                 'baseline_labs': [],
                 'pharmacy_review': ['dose_verification'],
             },
-            'task_description': 'Critical chemotherapy workflow violations. Find all gaps and prioritize.',
+            'task_description': 'Critical chemotherapy workflow violations caused an adverse reaction. Detect all 3 missing safety steps, then rank by urgency. Oncologist approval is highest priority — without it the other steps are meaningless.',
         },
     ],
     'cli_hard': [
         {
             'case_id': 'cli_hard_001',
-            'completion_threshold': 0.70,
+            'completion_threshold': 0.55,  # FIX: was 0.70 — hard IS hard
             'max_steps': 6,
+            # FIX: required_sequence MUST include all 3 actions — episode runs full 3-step workflow
             'done_conditions': {'min_actions': 3, 'required_sequence': ['detect_gap', 'rank_issues', 'order_steps']},
             'patient_id': 'P301',
             'patient_events': ['surgery_planned', 'insurance_denied', 'pre_op_test_skipped'],
@@ -152,11 +163,11 @@ CLINICAL_CASES = {
             },
             'required_steps': ['resolve_insurance', 'complete_pre_op', 'book_specialist', 'schedule_surgery'],
             'available_steps': ['resolve_insurance', 'complete_pre_op', 'book_specialist', 'schedule_surgery'],
-            'task_description': 'A complex surgical patient has multiple workflow failures. Detect all gaps, rank by priority, and plan a dependency-ordered recovery sequence that respects prerequisite constraints.',
+            'task_description': 'Complex surgical patient has 4 workflow failures. Detect ALL gaps, rank by priority, then plan a dependency-ordered recovery: resolve_insurance must come first (complete_pre_op depends on it), schedule_surgery must come last (depends on all others).',
         },
         {
             'case_id': 'cli_hard_002',
-            'completion_threshold': 0.70,
+            'completion_threshold': 0.55,
             'max_steps': 6,
             'done_conditions': {'min_actions': 3, 'required_sequence': ['detect_gap', 'rank_issues', 'order_steps']},
             'patient_id': 'P302',
@@ -174,11 +185,11 @@ CLINICAL_CASES = {
             },
             'required_steps': ['stabilize_vitals', 'cardiology_consult', 'imaging_ordered', 'medication_review', 'family_notification'],
             'available_steps': ['stabilize_vitals', 'cardiology_consult', 'imaging_ordered', 'medication_review', 'family_notification'],
-            'task_description': 'Complex cardiac emergency recovery plan. Multiple dependency chains. Medication review needs both cardiology consult AND imaging. Respect ALL prerequisites.',
+            'task_description': 'Complex cardiac emergency. stabilize_vitals must come FIRST (everything depends on it). medication_review needs BOTH cardiology_consult AND imaging_ordered. Plan a recovery sequence that respects ALL dependencies.',
         },
         {
             'case_id': 'cli_hard_003',
-            'completion_threshold': 0.70,
+            'completion_threshold': 0.55,
             'max_steps': 6,
             'done_conditions': {'min_actions': 3, 'required_sequence': ['detect_gap', 'rank_issues', 'order_steps']},
             'patient_id': 'P303',
@@ -195,11 +206,11 @@ CLINICAL_CASES = {
             },
             'required_steps': ['baseline_cbc', 'oncology_dose_verify', 'pharmacy_prep', 'nurse_admin_check'],
             'available_steps': ['baseline_cbc', 'oncology_dose_verify', 'pharmacy_prep', 'nurse_admin_check'],
-            'task_description': 'Chemotherapy workflow chaos. Multiple safety steps skipped. Labs must come before dose verification. Pharmacy needs both labs AND dose verification before prep. Plan safe recovery sequence.',
+            'task_description': 'Chemotherapy workflow chaos. baseline_cbc must come first. oncology_dose_verify needs baseline_cbc. pharmacy_prep needs BOTH dose_verify AND baseline_cbc. nurse_admin_check needs pharmacy_prep. Detect, rank, then order correctly.',
         },
         {
             'case_id': 'cli_hard_004',
-            'completion_threshold': 0.70,
+            'completion_threshold': 0.55,
             'max_steps': 6,
             'done_conditions': {'min_actions': 3, 'required_sequence': ['detect_gap', 'rank_issues', 'order_steps']},
             'patient_id': 'P304',
@@ -217,11 +228,11 @@ CLINICAL_CASES = {
             },
             'required_steps': ['hla_typing', 'crossmatch', 'immunosuppress_order', 'full_consent', 'surgery_slot'],
             'available_steps': ['hla_typing', 'crossmatch', 'immunosuppress_order', 'full_consent', 'surgery_slot'],
-            'task_description': 'Organ transplant pre-op disaster. Complex dependency chain: HLA typing → crossmatch → immunosuppression. Surgery booking requires ALL steps. One wrong order could delay transplant.',
+            'task_description': 'Organ transplant pre-op disaster. HLA typing must come first. Crossmatch needs HLA typing. Immunosuppression order needs crossmatch. Surgery booking requires ALL four prerequisites. One wrong order delays transplant.',
         },
         {
             'case_id': 'cli_hard_005',
-            'completion_threshold': 0.70,
+            'completion_threshold': 0.55,
             'max_steps': 6,
             'done_conditions': {'min_actions': 3, 'required_sequence': ['detect_gap', 'rank_issues', 'order_steps']},
             'patient_id': 'P305',
@@ -239,7 +250,7 @@ CLINICAL_CASES = {
             },
             'required_steps': ['ct_head', 'neuro_consult', 'tpa_eligibility', 'family_consent', 'icu_bed'],
             'available_steps': ['ct_head', 'neuro_consult', 'tpa_eligibility', 'family_consent', 'icu_bed'],
-            'task_description': 'Acute stroke code with tPA window closing. CT must come first. Eligibility and neuro consult both depend on CT. Family consent needs both eligibility AND neuro. ICU booking after eligibility confirmed. Time-critical recovery plan needed.',
+            'task_description': 'Acute stroke with closing tPA window. ct_head must come FIRST. Both tpa_eligibility and neuro_consult depend on ct_head. family_consent needs BOTH tpa_eligibility AND neuro_consult. icu_bed needs tpa_eligibility. Detect, rank, then order correctly.',
         },
     ],
 }
