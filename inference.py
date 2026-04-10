@@ -301,8 +301,8 @@ def run_task(client: OpenAI, task_id: str) -> float:
         if done:
             break
 
-    # Average gives partial credit for completed steps before crash
-    total_reward = sum(rewards) / max(len(rewards), 1) if rewards else 0.01
+    # Clamped sum — accumulate multi-turn rewards, cap at 0.99
+    total_reward = sum(rewards) if rewards else 0.01
     score = round(min(max(total_reward, 0.01), 0.99), 4)
     success = score > 0.0
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)

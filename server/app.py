@@ -20,26 +20,6 @@ from .datasets.clinical_cases import CLINICAL_CASES
 
 app = FastAPI(title='Multi-Agent Dev Tools Environment')
 
-from collections import defaultdict
-from time import time
-
-# Global rate limiter (simple token bucket)
-RATE_LIMITS = defaultdict(lambda: {'tokens': 10, 'last_refill': time()})
-
-def check_rate_limit(ip: str) -> bool:
-    """Returns True if request allowed, False if rate limited."""
-    bucket = RATE_LIMITS[ip]
-    now = time()
-    elapsed = now - bucket['last_refill']
-    refill = int(elapsed / 6)
-    if refill > 0:
-        bucket['tokens'] = min(10, bucket['tokens'] + refill)
-        bucket['last_refill'] = now
-    if bucket['tokens'] > 0:
-        bucket['tokens'] -= 1
-        return True
-    return False
-
 # ── Load Debug Panel HTML ──
 _DEBUG_HTML_PATH = os.path.join(os.path.dirname(__file__), 'debug_panel.html')
 
@@ -126,15 +106,6 @@ async def health(request: Request):
 async def reset(request: Request):
     """Create a new episode for a task. Returns episode_id + initial observation."""
     
-    # Get client IP
-    ip = request.client.host if request.client else '127.0.0.1'
-    if not check_rate_limit(ip):
-        return JSONResponse(status_code=200, content={
-            'error': 'Rate limit exceeded. Max 10 requests/minute.',
-            'done': True,
-            'observation': {},
-        })
-        
     try:
         body = await request.json()
         task_id = body.get('task_id', 'sec_easy')
@@ -557,8 +528,8 @@ def _run_single_task_inline(task_id, api_base, api_key, model_id, system_prompt)
         logs.append(msg)
         yield {'type': 'log', 'level': 'info', 'msg': msg}
 
-    # Average rewards — same logic as inference.py
-    total_reward = sum(rewards) / max(len(rewards), 1) if rewards else 0.01
+    # Clamped sum — same logic as inference.py
+    total_reward = sum(rewards) if rewards else 0.01
     score = round(min(max(total_reward, 0.01), 0.99), 4)
     success = score > 0.0
     rewards_str = ','.join(f'{r:.2f}' for r in rewards)

@@ -203,7 +203,7 @@ entropyenv/
 ├── pyproject.toml              # Package configuration
 ├── Dockerfile                  # Multi-stage Docker build
 ├── server/
-│   ├── app.py                  # FastAPI server with rate limiting & session management
+│   ├── app.py                  # FastAPI server with session management
 │   ├── router.py               # Task dispatcher with mastery detection
 │   ├── session.py              # Episode state management
 │   ├── web_ui.py               # Gradio UI with performance dashboard
