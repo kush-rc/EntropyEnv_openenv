@@ -6,11 +6,6 @@
 #   [START] task=<task_name> env=<benchmark> model=<model_name>
 #   [STEP]  step=<n> action=<action_str> reward=<0.00> done=<true|false> error=<msg|null>
 #   [END]   success=<true|false> steps=<n> score=<0.00> rewards=<r1,r2,...,rn>
-#
-# Universal model compatibility:
-#   Strips <think>, <thinking>, <reasoning>, <reflection>, <thought>, <antThinking>
-#   Handles unclosed thinking tags, markdown fences, prose before/after JSON
-#   Type coercion for string→float, string→list, etc.
 
 import os
 import re
@@ -25,16 +20,23 @@ try:
 except ImportError:
     pass
 
-# ── Mandatory environment variables (spec-required names) ──
+# ── Mandatory environment variables ──
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-HF_TOKEN = os.getenv("HF_TOKEN")
-ENV_URL = os.getenv("ENV_URL", "http://localhost:7860")
+MODEL_NAME   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+HF_TOKEN     = os.getenv("HF_TOKEN")
+ENV_URL      = os.getenv("ENV_URL", "http://localhost:7860")
 
 MAX_STEPS   = 8
 TEMPERATURE = 0.1
 MAX_TOKENS  = 400
 BENCHMARK   = "EntropyEnv"
+
+# ── FATAL error codes: stop the entire task immediately, don't loop ──
+# 402 = payment required, 401 = unauthorized, 403 = forbidden
+# 429 = rate limit (stop task, not whole run), 503 = model unavailable
+FATAL_HTTP_CODES = {402, 401, 403}
+RETRYABLE_HTTP_CODES = {429, 500, 502, 503, 504}
+MAX_CONSECUTIVE_ERRORS = 3  # stop task after 3 consecutive API errors
 
 TASKS = [
     "sec_easy", "sec_medium", "sec_hard",
@@ -42,7 +44,6 @@ TASKS = [
     "cli_easy", "cli_medium", "cli_hard",
 ]
 
-# ── Generic System Prompt (works for ALL LLMs) ──
 SYSTEM_PROMPT = textwrap.dedent("""\
 You are an autonomous multi-domain analyst agent inside an RL environment.
 
@@ -83,6 +84,42 @@ CRITICAL: Output ONLY the JSON object. Nothing before or after it.
 """)
 
 
+def _extract_http_code(error_str: str) -> int:
+    """Extract HTTP status code from error message string. Returns 0 if not found."""
+    # Matches patterns like "Error code: 402" or "status_code=402" or "HTTP 402"
+    match = re.search(r'(?:Error code:|status_code=|HTTP )\s*(\d{3})', str(error_str))
+    if match:
+        return int(match.group(1))
+    # Also check for bare 4xx/5xx at start of error
+    match = re.search(r'\b(4\d{2}|5\d{2})\b', str(error_str))
+    if match:
+        return int(match.group(1))
+    return 0
+
+
+def _is_fatal_error(error_str: str) -> bool:
+    """Return True if this error means we should stop ALL tasks (not just this one)."""
+    code = _extract_http_code(error_str)
+    if code in FATAL_HTTP_CODES:
+        return True
+    # Also catch keyword patterns
+    fatal_keywords = ['insufficient credits', 'unauthorized', 'invalid api key',
+                      'authentication failed', 'no api key', 'forbidden']
+    err_lower = str(error_str).lower()
+    return any(kw in err_lower for kw in fatal_keywords)
+
+
+def _is_task_fatal_error(error_str: str) -> bool:
+    """Return True if this error means we should stop THIS task but try others."""
+    code = _extract_http_code(error_str)
+    if code in RETRYABLE_HTTP_CODES:
+        return True
+    task_fatal_keywords = ['model not found', 'model unavailable', 'context length',
+                           'maximum context', 'rate limit']
+    err_lower = str(error_str).lower()
+    return any(kw in err_lower for kw in task_fatal_keywords)
+
+
 def build_user_prompt(step_num: int, obs: dict, history: list) -> str:
     task_type = obs.get("task_type", "unknown")
     task_id   = obs.get("task_id", "unknown")
@@ -90,7 +127,6 @@ def build_user_prompt(step_num: int, obs: dict, history: list) -> str:
 
     parts = [f"Step {step_num} | task_type={task_type} | task_id={task_id} | subtype={task_sub}"]
 
-    # History summary
     if history:
         used = [h["action_type"] for h in history]
         last = history[-1]
@@ -99,31 +135,23 @@ def build_user_prompt(step_num: int, obs: dict, history: list) -> str:
         if last["reward"] < 0.4:
             parts.append(f"⚠️ Low score. Try different approach.")
 
-    # Validation failure
     if obs.get("validation_failed"):
         parts.append(f"\n❌ VALIDATION FAILED!")
         parts.append(f"Error: {obs.get('message', 'unknown')}")
         parts.append(f"Fix: {obs.get('hint', '')}")
 
-    # Reviewer feedback
     if obs.get("reviewer_feedback"):
         parts.append(f"\n📝 REVIEWER FEEDBACK:")
         parts.append(obs["reviewer_feedback"])
 
-    # SMART TRUNCATION: Separate critical fields
     obs_copy = dict(obs)
-    
-    # Extract large fields that agents NEED
     compat_matrix = obs_copy.pop("compatibility_matrix", None)
     dep_graph = obs_copy.pop("dependency_graph", None)
-    
-    # Core observation (always include)
+
     core_text = json.dumps(obs_copy, default=str, indent=2)
     parts.append(f"\nObservation:\n{core_text}")
-    
-    # Compatibility matrix (for dep tasks) - don't truncate
+
     if compat_matrix:
-        # Format nicely so model can parse
         parts.append(f"\nCompatibility Matrix (use this to resolve conflicts):")
         for pkg, versions in compat_matrix.items():
             parts.append(f"  {pkg}:")
@@ -132,8 +160,7 @@ def build_user_prompt(step_num: int, obs: dict, history: list) -> str:
                     parts.append(f"    {ver} → requires {deps}")
                 else:
                     parts.append(f"    {ver} → (no deps)")
-    
-    # Dependency graph (for cli tasks)
+
     if dep_graph:
         parts.append(f"\nDependency Graph (prerequisites must come first):")
         for step, prereqs in dep_graph.items():
@@ -142,7 +169,6 @@ def build_user_prompt(step_num: int, obs: dict, history: list) -> str:
             else:
                 parts.append(f"  {step} → (no prereqs)")
 
-    # Next action hint
     if task_type == "security":
         used_types = [h["action_type"] for h in history]
         if not used_types or "identify_vulnerability" not in used_types:
@@ -151,7 +177,7 @@ def build_user_prompt(step_num: int, obs: dict, history: list) -> str:
             parts.append("\n➡️ NEXT: propose_fix")
         else:
             parts.append("\n➡️ NEXT: revise_fix (address reviewer_feedback)")
-    
+
     elif task_type == "clinical":
         used_types = [h["action_type"] for h in history]
         if "detect_gap" not in used_types:
@@ -166,31 +192,18 @@ def build_user_prompt(step_num: int, obs: dict, history: list) -> str:
 
 
 def parse_action(raw_text: str) -> dict:
-    """Parse LLM response into action dict.
-
-    Universal compatibility — handles ALL known model output patterns:
-    - Qwen3/DeepSeek R1: <think>...</think>{json}
-    - QwQ: <reasoning>...</reasoning>{json}
-    - Gemini: <thought>...</thought>{json}
-    - Claude: <antThinking>...</antThinking>{json}
-    - Mistral/Mixtral: plain prose before JSON
-    - All models: ```json fences, unclosed tags, nested JSON
-    """
+    """Parse LLM response into action dict. Universal model compatibility."""
     text = raw_text.strip()
 
-    # Strip ALL known reasoning/thinking blocks (closed and unclosed)
     for tag in ["think", "thinking", "reasoning", "reflection", "thought", "antThinking"]:
         open_tag = f"<{tag}>"
         close_tag = f"</{tag}>"
         if open_tag in text:
             if close_tag in text:
-                # Normal case: strip everything between tags
                 text = text.split(close_tag)[-1].strip()
             else:
-                # Unclosed tag: take everything after the open tag and find JSON
                 text = text.split(open_tag)[-1].strip()
 
-    # Strip markdown code fences
     if "```json" in text:
         text = text.split("```json")[1].split("```")[0].strip()
     elif "```" in text:
@@ -198,7 +211,6 @@ def parse_action(raw_text: str) -> dict:
         if len(parts) >= 3:
             text = parts[1].strip()
 
-    # Find first JSON object if text has prose before/after
     if not text.startswith("{"):
         start = text.find("{")
         if start >= 0:
@@ -211,7 +223,6 @@ def parse_action(raw_text: str) -> dict:
     except (json.JSONDecodeError, TypeError):
         pass
 
-    # Regex fallback: find outermost JSON object (handles nested braces)
     match = re.search(r"\{(?:[^{}]|\{[^{}]*\})*\}", text, re.DOTALL)
     if match:
         try:
@@ -222,34 +233,42 @@ def parse_action(raw_text: str) -> dict:
     return {"action_type": "error", "raw": text[:100]}
 
 
-def run_task(client: OpenAI, task_id: str) -> float:
-    """Run a single task through the environment. Returns score in [0, 1]."""
+def run_task(client: OpenAI, task_id: str) -> tuple:
+    """Run a single task. Returns (score, is_fatal_api_error).
 
+    is_fatal_api_error=True means the caller should stop ALL remaining tasks.
+    """
     # Reset environment
-    resp = requests.post(f"{ENV_URL}/reset", json={"task_id": task_id}, timeout=30)
-    data = resp.json()
-
-    if "error" in data and not data.get("episode_id"):
-        # ── MANDATORY: [START] line even on error ──
+    try:
+        resp = requests.post(f"{ENV_URL}/reset", json={"task_id": task_id}, timeout=30)
+        data = resp.json()
+    except Exception as e:
         print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}", flush=True)
         print(f"[END] success=false steps=0 score=0.01 rewards=", flush=True)
-        return 0.01
+        return 0.01, False
+
+    if "error" in data and not data.get("episode_id"):
+        print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}", flush=True)
+        print(f"[END] success=false steps=0 score=0.01 rewards=", flush=True)
+        return 0.01, False
 
     episode_id = data.get("episode_id", "unknown")
     obs = data.get("observation", data)
 
-    # ── MANDATORY [START] — exact spec format ──
     print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}", flush=True)
 
     rewards = []
     history = []
     step_num = 0
-    last_error = None
+    consecutive_errors = 0
 
     for step_num in range(1, MAX_STEPS + 1):
         user_prompt = build_user_prompt(step_num, obs, history)
 
         error_msg = None
+        fatal_error = False
+        task_fatal = False
+
         try:
             reply = client.chat.completions.create(
                 model=MODEL_NAME,
@@ -261,9 +280,30 @@ def run_task(client: OpenAI, task_id: str) -> float:
                 max_tokens=MAX_TOKENS,
             )
             response_text = (reply.choices[0].message.content or "").strip()
+            consecutive_errors = 0  # reset on success
+
         except Exception as e:
             error_msg = str(e)
             response_text = '{"action_type": "error"}'
+            consecutive_errors += 1
+
+            # Check if this is a fatal error (auth/payment) — stop everything
+            if _is_fatal_error(error_msg):
+                fatal_error = True
+                short_err = error_msg[:120].replace('\n', ' ')
+                print(f"[STEP] step={step_num} action=invalid reward=0.01 done=true error=FATAL:{short_err}", flush=True)
+                rewards.append(0.01)
+                step_num_final = step_num
+                break
+
+            # Check if this is a task-level fatal (rate limit, model unavailable)
+            if _is_task_fatal_error(error_msg) or consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                task_fatal = True
+                short_err = error_msg[:120].replace('\n', ' ')
+                print(f"[STEP] step={step_num} action=invalid reward=0.01 done=true error=TASK_STOP:{short_err}", flush=True)
+                rewards.append(0.01)
+                step_num_final = step_num
+                break
 
         action = parse_action(response_text)
         action_type = action.get("action_type", "unknown")
@@ -273,44 +313,49 @@ def run_task(client: OpenAI, task_id: str) -> float:
             step_resp = requests.post(f"{ENV_URL}/step", json=action, timeout=30)
             step_data = step_resp.json()
         except Exception as e:
-            error_msg = str(e)[:100]  # Truncate long errors
-            # Give the agent credit for steps completed so far
-            print(f"[STEP] step={step_num} action={action_type} reward=0.01 done=true error={error_msg}", flush=True)
+            short_err = str(e)[:100]
+            print(f"[STEP] step={step_num} action={action_type} reward=0.01 done=true error={short_err}", flush=True)
             rewards.append(0.01)
-            done = True
+            step_num_final = step_num
+            fatal_error = False
             break
 
         reward = float(step_data.get("reward", 0.0))
         done   = bool(step_data.get("done", False))
         obs    = step_data.get("observation", step_data)
         step_error = step_data.get("error") or error_msg
-        last_error = step_error
 
         rewards.append(reward)
         history.append({"step": step_num, "action_type": action_type, "reward": reward, "done": done})
 
-        # Show 'invalid' for validation failures
         display_action = action_type
         if obs.get("validation_failed"):
             display_action = "invalid"
 
-        # ── MANDATORY [STEP] — exact spec format ──
         error_val = step_error if step_error else "null"
+        # Truncate long error messages in output
+        if error_val and error_val != "null" and len(str(error_val)) > 150:
+            error_val = str(error_val)[:150] + "..."
+
         print(f"[STEP] step={step_num} action={display_action} reward={reward:.2f} done={str(done).lower()} error={error_val}", flush=True)
 
-        if done:
-            break
+        step_num_final = step_num
 
-    # Average reward across trajectory — discriminative for multi-turn tasks
+        if done:
+            fatal_error = False
+            break
+    else:
+        step_num_final = step_num
+        fatal_error = False
+
     avg_reward = sum(rewards) / max(len(rewards), 1) if rewards else 0.01
     score = round(min(max(avg_reward, 0.01), 0.99), 4)
-    success = score > 0.0
+    success = score > 0.01
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
 
-    # ── MANDATORY [END] — exact spec format ──
-    print(f"[END] success={str(success).lower()} steps={step_num} score={score:.2f} rewards={rewards_str}", flush=True)
+    print(f"[END] success={str(success).lower()} steps={step_num_final} score={score:.2f} rewards={rewards_str}", flush=True)
 
-    return score
+    return score, fatal_error
 
 
 def main() -> None:
@@ -333,7 +378,21 @@ def main() -> None:
     scores = {}
     for task_id in TASKS:
         try:
-            scores[task_id] = run_task(client, task_id)
+            score, is_fatal = run_task(client, task_id)
+            scores[task_id] = score
+
+            # If we hit a fatal API error (402/401/403), stop ALL remaining tasks
+            if is_fatal:
+                print(f"\n🚫 Fatal API error on {task_id}. Stopping all remaining tasks.", flush=True)
+                print(f"   Likely cause: invalid token, no credits, or unauthorized access.", flush=True)
+                # Fill remaining tasks with 0.01
+                for remaining in TASKS:
+                    if remaining not in scores:
+                        scores[remaining] = 0.01
+                        print(f"[START] task={remaining} env={BENCHMARK} model={MODEL_NAME}", flush=True)
+                        print(f"[END] success=false steps=0 score=0.01 rewards=", flush=True)
+                break
+
         except Exception as e:
             print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}", flush=True)
             print(f"[END] success=false steps=0 score=0.01 rewards=", flush=True)
@@ -341,11 +400,8 @@ def main() -> None:
 
     avg = round(sum(scores.values()) / max(len(scores), 1), 2)
     print(f"\n✅ All tasks complete! Average: {avg:.2f}", flush=True)
-
-    # Final scores JSON — evaluator may parse this
     print(json.dumps({"final_scores": scores}), flush=True)
 
-    # Persist results to disk
     try:
         from server.benchmark_store import append_result
         append_result(MODEL_NAME, MODEL_NAME, scores)

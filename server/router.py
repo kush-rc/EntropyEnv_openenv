@@ -61,13 +61,17 @@ def _check_done(session: SessionState, action: Dict, reward: float, max_steps: i
 
     Rules (in priority order):
     1. Hard limit: max_steps reached → always done
-    2. Required sequence: ALL actions in required_sequence have been called → done
-       (This is the primary completion signal for multi-step tasks)
-    3. Single-step tasks (min_actions=1): completion_threshold met → done
-    4. Otherwise: not done
+    2. min_actions not yet reached → never done early
+    3. Required sequence: each action in required_sequence must appear
+       at least as many times as it appears in the list → done
+       (e.g. ['migrate_api', 'migrate_api'] requires 2 migrate_api calls)
+    4. Single-step tasks (min_actions=1, no required_sequence): threshold met → done
+    5. Otherwise: not done
 
-    REMOVED: mastery early-exit (avg_reward >= 0.90 after 2 steps).
-    That was causing 0.99 scores on step 1 for easy tasks and ending episodes immediately.
+    BUG FIX: Previously used `all(a in all_actions ...)` which treated
+    ['migrate_api', 'migrate_api'] as satisfied after just 1 migrate_api call
+    because Python `in` checks set membership, not count.
+    Now uses Counter to check that each action appears enough times.
     """
     next_step = session.step_count + 1
     case = session.task_case
@@ -75,24 +79,34 @@ def _check_done(session: SessionState, action: Dict, reward: float, max_steps: i
     min_actions = done_conditions.get('min_actions', 1)
     required_seq = done_conditions.get('required_sequence', [])
 
-    # Rule 1: Hard limit
+    # Rule 1: Hard limit — always terminates
     if next_step >= max_steps:
         return True
 
-    # Build the full action history including current action
+    # Build the full action history including the current action
     all_actions = session.last_actions + [action.get('action_type', '')]
 
-    # Rule 2: Required sequence complete
-    # For multi-step tasks (min_actions > 1), this is the ONLY early-exit.
-    # For single-step tasks (min_actions == 1), this also works.
+    # Rule 2: min_actions guard — episode cannot end before this many steps
+    if next_step < min_actions:
+        return False
+
+    # Rule 3: Required sequence check using COUNTS not set membership
+    # This correctly handles repeated actions like ['migrate_api', 'migrate_api']
     if required_seq:
-        seq_complete = all(a in all_actions for a in required_seq)
+        from collections import Counter
+        required_counts = Counter(required_seq)
+        actual_counts   = Counter(all_actions)
+        # Every required action must appear at least as many times as required
+        seq_complete = all(
+            actual_counts[act] >= count
+            for act, count in required_counts.items()
+        )
         if seq_complete:
             return True
+        return False  # required_seq defined but not complete → keep going
 
-    # Rule 3: Single-step tasks — threshold met
-    # Only applies if min_actions == 1 AND no required_sequence defined
-    if min_actions == 1 and not required_seq:
+    # Rule 4: Single-step tasks with no required sequence — threshold met
+    if min_actions == 1:
         threshold = case.get('completion_threshold', 0.85)
         if reward >= threshold:
             return True
