@@ -376,6 +376,8 @@ def main() -> None:
         return
 
     scores = {}
+    had_fatal_error = False
+
     for task_id in TASKS:
         try:
             score, is_fatal = run_task(client, task_id)
@@ -383,9 +385,10 @@ def main() -> None:
 
             # If we hit a fatal API error (402/401/403), stop ALL remaining tasks
             if is_fatal:
+                had_fatal_error = True
                 print(f"\n🚫 Fatal API error on {task_id}. Stopping all remaining tasks.", flush=True)
                 print(f"   Likely cause: invalid token, no credits, or unauthorized access.", flush=True)
-                # Fill remaining tasks with 0.01
+                # Emit mandatory [START]/[END] lines for remaining tasks (spec compliance)
                 for remaining in TASKS:
                     if remaining not in scores:
                         scores[remaining] = 0.01
@@ -402,12 +405,19 @@ def main() -> None:
     print(f"\n✅ All tasks complete! Average: {avg:.2f}", flush=True)
     print(json.dumps({"final_scores": scores}), flush=True)
 
-    try:
-        from server.benchmark_store import append_result
-        append_result(MODEL_NAME, MODEL_NAME, scores)
-        print(f"💾 Results saved (avg: {avg:.4f})", flush=True)
-    except Exception as e:
-        print(f"⚠️ Failed to save results to disk: {e}", flush=True)
+    # Only save to disk if the run was NOT killed by a fatal API error.
+    # A run where the model had no credits or invalid token produces all-0.01
+    # scores that would corrupt the benchmark history.
+    if had_fatal_error:
+        print(f"⚠️ Results NOT saved — run was aborted due to a fatal API error (invalid token / no credits).", flush=True)
+        print(f"   Fix your API key/credits and re-run to get valid scores.", flush=True)
+    else:
+        try:
+            from server.benchmark_store import append_result
+            append_result(MODEL_NAME, MODEL_NAME, scores)
+            print(f"💾 Results saved (avg: {avg:.4f})", flush=True)
+        except Exception as e:
+            print(f"⚠️ Failed to save results to disk: {e}", flush=True)
 
 
 if __name__ == "__main__":
