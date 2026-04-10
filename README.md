@@ -7,7 +7,7 @@ sdk: docker
 app_port: 7860
 ---
 
-# 🌀 EntropyEnv — Multi-Agent Dev Tools Environment
+# 🌀 EntropyEnv — Multi-Agent Dev Tools Environment.
 
 > A multi-domain RL environment for training and evaluating AI agents on **real-world developer and clinical tasks**.
 > Built for the **Scaler × Meta × PyTorch × Hugging Face OpenEnv Hackathon 2026**.
