@@ -301,9 +301,9 @@ def run_task(client: OpenAI, task_id: str) -> float:
         if done:
             break
 
-    # Best single-step reward — discriminative for multi-turn tasks
-    best_reward = max(rewards) if rewards else 0.01
-    score = round(min(max(best_reward, 0.01), 0.99), 4)
+    # Average reward across trajectory — discriminative for multi-turn tasks
+    avg_reward = sum(rewards) / max(len(rewards), 1) if rewards else 0.01
+    score = round(min(max(avg_reward, 0.01), 0.99), 4)
     success = score > 0.0
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
 

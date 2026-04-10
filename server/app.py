@@ -528,9 +528,9 @@ def _run_single_task_inline(task_id, api_base, api_key, model_id, system_prompt)
         logs.append(msg)
         yield {'type': 'log', 'level': 'info', 'msg': msg}
 
-    # Best single-step reward — same logic as inference.py
-    best_reward = max(rewards) if rewards else 0.01
-    score = round(min(max(best_reward, 0.01), 0.99), 4)
+    # Average reward across trajectory — same logic as inference.py
+    avg_reward = sum(rewards) / max(len(rewards), 1) if rewards else 0.01
+    score = round(min(max(avg_reward, 0.01), 0.99), 4)
     success = score > 0.0
     rewards_str = ','.join(f'{r:.2f}' for r in rewards)
 

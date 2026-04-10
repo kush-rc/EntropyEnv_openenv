@@ -52,39 +52,42 @@ def route_step(session: SessionState, action: Dict) -> Dict:
 def _check_done(session: SessionState, action: Dict, reward: float, max_steps: int) -> bool:
     """Data-driven done condition from case definition.
     
-    Three triggers (from OpenEnv tech ref Section 7.2):
-    1. required_sequence complete (all required action types performed)
-    2. reward >= completion_threshold
-    3. max steps reached
+    Priority order:
+    1. max steps reached (hard limit)
+    2. min_actions guard (workflow must complete before ANY early exit)
+    3. mastery early-exit (high avg reward after min_actions met)
+    4. completion_threshold met
+    5. required_sequence complete
     """
     next_step = session.step_count + 1
     case = session.task_case
-
-    # Mastery condition: high performance -> early exit
-    if next_step >= 2:
-        avg_reward = (session.reward_acc + reward) / next_step
-        if avg_reward >= 0.90:
-            return True
+    done_conditions = case.get('done_conditions', {})
+    min_actions = done_conditions.get('min_actions', 1)
 
     # Always done if max steps reached
     if next_step >= max_steps:
         return True
 
-    # Check minimum actions before allowing completion by threshold
-    done_conditions = case.get('done_conditions', {})
-    min_actions = done_conditions.get('min_actions', 1)
+    # Min actions guard — workflow MUST complete before any early exit
+    # This prevents mastery from short-circuiting cli_hard at step 2
     if next_step < min_actions:
         return False
+
+    # Mastery condition: high performance -> early exit (only after min_actions met)
+    if next_step >= 2:
+        avg_reward = (session.reward_acc + reward) / next_step
+        if avg_reward >= 0.90:
+            return True
 
     # Completion threshold from case
     threshold = case.get('completion_threshold', 0.85)
     if reward >= threshold:
         return True
 
-    # Required sequence check — only end if agent is actually scoring well
-    # This prevents premature termination when all action types are done but rewards are 0.0
+    # Required sequence check — once all required actions are done, episode ends
+    # The accumulated rewards already reflect quality; no need for a reward guard
     required_seq = done_conditions.get('required_sequence', [])
-    if required_seq and reward >= 0.3:
+    if required_seq:
         all_actions = session.last_actions + [action.get('action_type', '')]
         seq_complete = all(a in all_actions for a in required_seq)
         if seq_complete:
