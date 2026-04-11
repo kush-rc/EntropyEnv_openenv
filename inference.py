@@ -266,12 +266,12 @@ def run_task(client: OpenAI, task_id: str) -> tuple:
     except Exception as e:
         # Env unreachable — must still emit [START] and [END]
         print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}", flush=True)
-        print(f"[END] success=false steps=0 rewards=", flush=True)
+        print(f"[END] success=false steps=0 rewards=0.01", flush=True)
         return 0.01, False
 
     if "error" in data and not data.get("episode_id"):
         print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}", flush=True)
-        print(f"[END] success=false steps=0 rewards=", flush=True)
+        print(f"[END] success=false steps=0 rewards=0.01", flush=True)
         return 0.01, False
 
     episode_id = data.get("episode_id", "unknown")
@@ -420,13 +420,13 @@ def main() -> None:
                     if remaining not in scores:
                         scores[remaining] = 0.01
                         print(f"[START] task={remaining} env={BENCHMARK} model={MODEL_NAME}", flush=True)
-                        print(f"[END] success=false steps=0 rewards=", flush=True)
+                        print(f"[END] success=false steps=0 rewards=0.01", flush=True)
                 break
 
         except Exception as e:
             scores[task_id] = 0.01
             print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}", flush=True)
-            print(f"[END] success=false steps=0 rewards=", flush=True)
+            print(f"[END] success=false steps=0 rewards=0.01", flush=True)
 
     avg = round(sum(scores.values()) / max(len(scores), 1), 4)
     print(f"\n✅ All tasks complete! Average: {avg:.4f}", flush=True)
