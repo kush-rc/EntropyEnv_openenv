@@ -106,7 +106,7 @@ Agents detect missing steps in hospital workflows, rank them by clinical priorit
 | 🔄 **Multi-Turn Episodes** | Agents iterate through identify → act → revise workflows |
 | 🛡️ **3-Stage Validation** | Schema → Domain → Consistency checks with helpful error hints |
 | 📊 **Score Breakdown** | Per-component feedback in every step so agents learn *what* to improve |
-| 🏎️ **Fatal Error Handling** | Automatic 402/401 detection stops wasted API calls immediately |
+| 🏎️ **Fatal Error Handling** | Automatic 402/401/403 detection stops wasted API calls immediately |
 | 🌐 **Universal LLM Support** | Works with any OpenAI-compatible model (Qwen, Llama, DeepSeek, Gemini, etc.) |
 | 🐳 **Docker-Ready** | One-command deploy to Hugging Face Spaces |
 | 📈 **GRPO-Compatible** | Smooth reward gradients designed for policy optimization training |
@@ -229,33 +229,19 @@ entropyenv/
 
 ## 📈 Baseline Performance
 
-Tested across 14 models from 9 providers. Scores range from **0.01 to 0.80**, demonstrating genuine difficulty discrimination:
+> **Note:** Scores below are from the latest grading revision (v3: weighted 0.60×max + 0.40×mean scoring, difficulty_multiplier removed, dep_hard done-condition fixed). Re-benchmarking across 14+ models in progress.
 
 | Model | Provider | sec_easy | sec_med | sec_hard | dep_easy | dep_med | dep_hard | cli_easy | cli_med | cli_hard | **Avg** |
 |-------|----------|:--------:|:-------:|:--------:|:--------:|:-------:|:--------:|:--------:|:-------:|:--------:|:-------:|
-| DeepSeek R1 | DeepSeek | 0.87 | 0.36 | 0.61 | 0.83 | 0.95 | 0.85 | 0.99 | 0.95 | 0.80 | **0.80** |
-| Gemma-4-26B | Google | 0.87 | 0.33 | 0.48 | 0.99 | 0.95 | 0.85 | 0.99 | 0.84 | 0.83 | **0.79** |
-| Mistral Small | Mistral | 0.65 | 0.37 | 0.59 | 0.99 | 0.95 | 0.85 | 0.99 | 0.95 | 0.67 | **0.78** |
-| Nemotron 70B | NVIDIA | 0.88 | 0.25 | 0.54 | 0.83 | 0.95 | 0.85 | 0.99 | 0.93 | 0.77 | **0.77** |
-| Gemma-4-31B | Google | 0.87 | 0.37 | 0.47 | 0.83 | 0.95 | 0.85 | 0.74 | 0.85 | 0.83 | **0.75** |
-| Qwen3-32B | Alibaba | 0.53 | 0.34 | 0.42 | 0.99 | 0.95 | 0.85 | 0.99 | 0.80 | 0.79 | **0.74** |
-| Claude Haiku 4.5 | Anthropic | 0.53 | 0.53 | 0.49 | 0.99 | 0.95 | 0.85 | 0.74 | 0.84 | 0.67 | **0.73** |
-| Grok 4.20 | xAI | 0.87 | 0.49 | 0.41 | 0.99 | 0.95 | 0.85 | 0.09 | 0.84 | 0.83 | **0.70** |
-| Grok 3 | xAI | 0.53 | 0.29 | 0.44 | 0.45 | 0.95 | 0.85 | 0.74 | 0.95 | 0.83 | **0.67** |
-| Llama 3.3 70B | Meta | 0.87 | 0.20 | 0.38 | 0.83 | 0.95 | 0.85 | 0.09 | 0.84 | 0.83 | **0.65** |
-| GPT-OSS-20B | OpenAI | 0.65 | 0.16 | 0.51 | 0.99 | 0.95 | 0.85 | 0.09 | 0.57 | 0.83 | **0.62** |
-| Llama 3.1 8B | Meta | 0.53 | 0.22 | 0.44 | 0.45 | 0.67 | 0.85 | 0.74 | 0.48 | 0.80 | **0.57** |
-| GPT-OSS-120B | OpenAI | 0.87 | 0.21 | 0.20 | 0.99 | 0.11 | 0.13 | 0.74 | 0.95 | 0.45 | **0.52** |
-| Qwen3.5-9B | Alibaba | 0.87 | 0.72 | 0.51 | 0.99 | 0.11 | 0.20 | 0.05 | 0.01 | 0.02 | **0.38** |
-| MiniMax M2.5 | MiniMax | 0.53 | 0.13 | 0.02 | 0.45 | 0.01 | 0.01 | 0.74 | 0.23 | 0.12 | **0.25** |
-| MiniMax M2.7 | MiniMax | 0.53 | 0.01 | 0.39 | 0.45 | 0.01 | 0.01 | 0.04 | 0.11 | 0.42 | **0.22** |
-| MiMo-v2 Pro | Xiaomi | 0.01 | 0.01 | 0.01 | 0.01 | 0.01 | 0.01 | 0.01 | 0.01 | 0.01 | **0.01** |
+| *Benchmarking in progress...* | | | | | | | | | | | |
 
-**Key observations:**
-- 🎯 **Clear difficulty progression:** Easy > Medium > Hard across all domains
-- 📊 **High variance:** Scores range from 0.01 (incompatible models) to 0.80 (DeepSeek R1)
-- 🔬 **Security is hardest:** Even top models score < 0.61 on `sec_hard` (propose_fix/revise_fix are genuinely difficult)
-- 🧠 **Model discrimination:** The benchmark clearly separates 70B+ reasoning models from smaller/weaker ones
+**Scoring formula:** `score = 0.60 × max(step_rewards) + 0.40 × mean(step_rewards)`, clamped to `[0.01, 0.99]`
+
+**Design principles:**
+- 🎯 **No artificial difficulty caps** — scores reflect actual grader correctness
+- 📊 **Weighted blend** — rewards consistently good episodes over single-lucky-step flukes
+- 🔬 **Spec-compliant** — `[END]` lines have NO `score=` field per official guidelines
+- 🧠 **14+ model families tested** for universal compatibility
 
 ---
 
@@ -264,10 +250,10 @@ Tested across 14 models from 9 providers. Scores range from **0.01 to 0.80**, de
 The baseline `inference.py` emits structured logs matching the OpenEnv spec:
 
 ```
-[START] task=sec_easy env=multi-agent-dev-tools-env model=Qwen/Qwen2.5-72B-Instruct
+[START] task=sec_easy env=EntropyEnv model=Qwen/Qwen2.5-72B-Instruct
 [STEP] step=1 action=identify_vulnerability reward=0.85 done=false error=null
 [STEP] step=2 action=propose_fix reward=0.92 done=true error=null
-[END] success=true steps=2 score=0.89 rewards=0.85,0.92
+[END] success=true steps=2 rewards=0.85,0.92
 ```
 
 ---

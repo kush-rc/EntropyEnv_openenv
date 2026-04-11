@@ -289,7 +289,7 @@ async def run_inference(request: Request):
         env_vars = os.environ.copy()
         env_vars['ENV_URL'] = env_vars.get('ENV_URL', 'http://localhost:7860')
 
-        # Find inference.py at project root (one level up from server/)
+        # inference.py is at project root (one level up from server/)
         inference_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             'inference.py'
@@ -309,30 +309,19 @@ async def run_inference(request: Request):
 
         stdout = result.stdout or ''
         stderr = result.stderr or ''
+        logs   = []
 
-        # Parse [END] lines for scores
-        logs = []
-        final_scores = {}
+        # Collect all log lines for display
         for line in stdout.splitlines():
             line = line.strip()
-            if not line:
-                continue
-            logs.append(line)
-            if line.startswith('[END]'):
-                parts = {}
-                for token in line.split():
-                    if '=' in token:
-                        k, v = token.split('=', 1)
-                        parts[k] = v
-                task_id = parts.get('task_id', '')
-                total_reward = parts.get('total_reward', '0')
-                if task_id:
-                    try:
-                        final_scores[task_id] = float(total_reward)
-                    except ValueError:
-                        final_scores[task_id] = 0.01
+            if line:
+                logs.append(line)
 
-        # Also try final JSON summary line
+        # ── Parse final_scores from the JSON summary line ──
+        # This is authoritative — inference.py always prints:
+        #   {"final_scores": {"sec_easy": 0.85, ...}}
+        # at the end of main().
+        final_scores = {}
         for line in reversed(stdout.splitlines()):
             line = line.strip()
             if line.startswith('{') and 'final_scores' in line:
@@ -340,9 +329,43 @@ async def run_inference(request: Request):
                     parsed = json.loads(line)
                     if 'final_scores' in parsed:
                         final_scores = parsed['final_scores']
+                        break
                 except Exception:
                     pass
-                break
+
+        # ── Fallback: parse [END] lines for any tasks missing from JSON ──
+        # Official [END] format: success=<bool> steps=<n> rewards=<r1,r2,...>
+        # We track which task we're in via the preceding [START] line.
+        if not final_scores:
+            current_task = None
+            for line in stdout.splitlines():
+                line = line.strip()
+                if line.startswith('[START]'):
+                    # Extract task= field
+                    for token in line.split():
+                        if token.startswith('task='):
+                            current_task = token.split('=', 1)[1]
+                            break
+                elif line.startswith('[END]') and current_task:
+                    # Parse rewards= field and compute score from it
+                    parts = {}
+                    for token in line.split():
+                        if '=' in token:
+                            k, v = token.split('=', 1)
+                            parts[k] = v
+                    rewards_str = parts.get('rewards', '')
+                    if rewards_str:
+                        try:
+                            step_rewards = [float(r) for r in rewards_str.split(',') if r]
+                            if step_rewards:
+                                # Same weighted blend as inference.py _compute_score()
+                                max_r  = max(step_rewards)
+                                mean_r = sum(step_rewards) / len(step_rewards)
+                                score  = round(min(max(0.60 * max_r + 0.40 * mean_r, 0.01), 0.99), 4)
+                                final_scores[current_task] = score
+                        except (ValueError, TypeError):
+                            final_scores[current_task] = 0.01
+                    current_task = None
 
         avg = (
             round(sum(final_scores.values()) / len(final_scores), 4)
@@ -350,22 +373,22 @@ async def run_inference(request: Request):
         )
 
         return JSONResponse(status_code=200, content={
-            'status': 'ok' if result.returncode == 0 else 'completed_with_errors',
-            'final_scores': final_scores,
+            'status':        'ok' if result.returncode == 0 else 'completed_with_errors',
+            'final_scores':  final_scores,
             'average_score': avg,
-            'logs': logs[-50:],
-            'stderr': stderr[-500:] if stderr else '',
-            'returncode': result.returncode,
+            'logs':          logs[-50:],
+            'stderr':        stderr[-500:] if stderr else '',
+            'returncode':    result.returncode,
         })
 
     except subprocess.TimeoutExpired:
         return JSONResponse(status_code=200, content={
-            'error': 'inference.py timed out after 20 minutes',
+            'error':        'inference.py timed out after 20 minutes',
             'final_scores': {},
         })
     except Exception as e:
         return JSONResponse(status_code=200, content={
-            'error': str(e),
+            'error':        str(e),
             'final_scores': {},
         })
 
@@ -528,13 +551,18 @@ def _run_single_task_inline(task_id, api_base, api_key, model_id, system_prompt)
         logs.append(msg)
         yield {'type': 'log', 'level': 'info', 'msg': msg}
 
-    # Average reward across trajectory — same logic as inference.py
-    avg_reward = sum(rewards) / max(len(rewards), 1) if rewards else 0.01
-    score = round(min(max(avg_reward, 0.01), 0.99), 4)
-    success = score > 0.0
+    # Weighted blend scoring — same as inference.py _compute_score()
+    if rewards:
+        max_r = max(rewards)
+        mean_r = sum(rewards) / len(rewards)
+        score = round(min(max(0.60 * max_r + 0.40 * mean_r, 0.01), 0.99), 4)
+    else:
+        score = 0.01
+    success = any(r > 0.10 for r in rewards)
     rewards_str = ','.join(f'{r:.2f}' for r in rewards)
 
-    msg = f'[END] success={str(success).lower()} steps={len(rewards)} score={score:.2f} rewards={rewards_str}'
+    # [END] line — NO score= field (not in official spec)
+    msg = f'[END] success={str(success).lower()} steps={len(rewards)} rewards={rewards_str}'
     logs.append(msg)
     yield {'type': 'log', 'level': 'ok', 'msg': msg}
     yield {'type': 'task_done', 'task_id': task_id, 'score': score, 'logs': logs}
