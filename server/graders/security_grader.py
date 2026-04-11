@@ -7,7 +7,7 @@
 # 3. _score_revise: floor raised from 0.20 to 0.10 — revise should be hard
 # 4. All three scorers now have tighter weights that produce real variance
 
-from typing import Dict
+from typing import Dict, Any
 from .base_grader import grade_dynamic, safe_score
 
 VALID_ACTIONS = ['identify_vulnerability', 'propose_fix', 'revise_fix']
@@ -172,6 +172,10 @@ def compute_correctness(action: Dict, case: Dict) -> float:
     return None
 
 
-def grade(action: Dict, session) -> float:
-    """Entry point called by router. Runs full reward pipeline."""
+def grade(action: Dict = None, session: Any = None) -> float:
+    """Entry point called by router. Runs full reward pipeline.
+    Survives parameterless reflection testing by returning 0.01.
+    """
+    if action is None or session is None:
+        return 0.01
     return grade_dynamic(action, session, compute_correctness, VALID_ACTIONS, FORBIDDEN, max_steps=8)

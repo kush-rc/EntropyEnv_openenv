@@ -14,46 +14,55 @@ port: 7860
 
 tasks:
   - id: sec_easy
+    grader: server.graders.security_grader.grade
     name: Single vulnerability classification
     difficulty: easy
     description: Identify vulnerability type, CVSS score, and severity from a tool-call snippet.
 
   - id: sec_medium
+    grader: server.graders.security_grader.grade
     name: Vulnerability identification + fix proposal
     difficulty: medium
     description: Identify the vulnerability and propose a secure code fix.
 
   - id: sec_hard
+    grader: server.graders.security_grader.grade
     name: Adversarial patch defense with reviewer feedback
     difficulty: hard
     description: Identify, fix, and iteratively revise based on reviewer feedback.
 
   - id: dep_easy
+    grader: server.graders.dependency_grader.grade
     name: PyTorch 1.x deprecated API detection
     difficulty: easy
     description: Flag outdated packages and deprecated API usage.
 
   - id: dep_medium
+    grader: server.graders.dependency_grader.grade
     name: Version conflict chain resolution
     difficulty: medium
     description: Resolve version conflicts using compatibility matrix constraints.
 
   - id: dep_hard
+    grader: server.graders.dependency_grader.grade
     name: torch.compile graph-break hunter
     difficulty: hard
     description: Fix torch.compile graph-break patterns in dependency order.
 
   - id: cli_easy
+    grader: server.graders.clinical_grader.grade
     name: Single workflow gap detection
     difficulty: easy
     description: Detect missing steps in a clinical workflow and assess risk.
 
   - id: cli_medium
+    grader: server.graders.clinical_grader.grade
     name: Multi-gap priority ranking
     difficulty: medium
     description: Detect gaps and rank them by clinical priority.
 
   - id: cli_hard
+    grader: server.graders.clinical_grader.grade
     name: Dependency-ordered recovery planning
     difficulty: hard
     description: Plan a dependency-safe recovery sequence for a disrupted clinical workflow.

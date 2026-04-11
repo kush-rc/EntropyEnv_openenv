@@ -11,7 +11,7 @@
 #    Extra steps penalized more heavily
 
 import math
-from typing import Dict, List
+from typing import Dict, List, Any
 from .base_grader import grade_dynamic, safe_score
 
 VALID_ACTIONS = ['detect_gap', 'rank_issues', 'order_steps']
@@ -209,6 +209,10 @@ def compute_correctness(action: Dict, case: Dict) -> float:
     return None
 
 
-def grade(action: Dict, session) -> float:
-    """Entry point called by router. Runs full reward pipeline."""
+def grade(action: Dict = None, session: Any = None) -> float:
+    """Entry point called by router. Runs full reward pipeline.
+    Survives parameterless reflection testing by returning 0.01.
+    """
+    if action is None or session is None:
+        return 0.01
     return grade_dynamic(action, session, compute_correctness, VALID_ACTIONS, FORBIDDEN, max_steps=6)
