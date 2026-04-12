@@ -561,8 +561,8 @@ def _run_single_task_inline(task_id, api_base, api_key, model_id, system_prompt)
     success = any(r > 0.10 for r in rewards)
     rewards_str = ','.join(f'{r:.2f}' for r in rewards)
 
-    # [END] line — NO score= field (not in official spec)
-    msg = f'[END] success={str(success).lower()} steps={len(rewards)} rewards={rewards_str}'
+    # Mandatory [END] line — exact official spec
+    msg = f'[END] success={str(success).lower()} steps={len(rewards)} score={score:.2f} rewards={rewards_str}'
     logs.append(msg)
     yield {'type': 'log', 'level': 'ok', 'msg': msg}
     yield {'type': 'task_done', 'task_id': task_id, 'score': score, 'logs': logs}
