@@ -112,13 +112,40 @@ def test_cli_order_variance():
     print(f'  Clinical order variance: {s1:.4f} > violated:{s2:.4f}, partial:{s3:.4f} PASS')
 
 
-def test_safe_score_none():
-    """Bug 1 fix: safe_score(None) must return 0.0, not crash."""
-    assert safe_score(None) == 0.0
-    assert safe_score(1.5) == 1.0
-    assert safe_score(-0.5) == 0.0
-    assert safe_score('bad') == 0.0
-    print('  safe_score(None) guard: PASS')
+def test_safe_score_clamp():
+    """
+    safe_score clamps to [0.01, 0.99] — strictly between 0 and 1.
+
+    WHY 0.01 not 0.0:  The official spec says scores must be strictly > 0.
+                        A score of 0.0 from a crashed run looks indistinguishable
+                        from a broken environment. 0.01 signals "ran but failed".
+
+    WHY 0.99 not 1.0:  A score of exactly 1.0 means the grader is trivially solved
+                        or broken. 0.99 signals "excellent but not perfect".
+    """
+    # Floor: None, negative, bad types → 0.01
+    assert safe_score(None)   == 0.01, f"Expected 0.01, got {safe_score(None)}"
+    assert safe_score(-0.5)   == 0.01, f"Expected 0.01, got {safe_score(-0.5)}"
+    assert safe_score(-999)   == 0.01, f"Expected 0.01, got {safe_score(-999)}"
+    assert safe_score('bad')  == 0.01, f"Expected 0.01, got {safe_score('bad')}"
+    assert safe_score([])     == 0.01, f"Expected 0.01, got {safe_score([])}"
+
+    # Ceiling: values > 1 → 0.99
+    assert safe_score(1.5)    == 0.99, f"Expected 0.99, got {safe_score(1.5)}"
+    assert safe_score(2.0)    == 0.99, f"Expected 0.99, got {safe_score(2.0)}"
+    assert safe_score(100)    == 0.99, f"Expected 0.99, got {safe_score(100)}"
+
+    # Exact boundary values
+    assert safe_score(0.01)   == 0.01, f"Expected 0.01, got {safe_score(0.01)}"
+    assert safe_score(0.99)   == 0.99, f"Expected 0.99, got {safe_score(0.99)}"
+
+    # Pass-through: normal values in range stay unchanged
+    assert safe_score(0.5)    == 0.5,  f"Expected 0.5, got {safe_score(0.5)}"
+    assert safe_score(0.85)   == 0.85, f"Expected 0.85, got {safe_score(0.85)}"
+    assert safe_score(0.0001) == 0.01, f"Expected 0.01 (below floor), got {safe_score(0.0001)}"
+    assert safe_score(0.9999) == 0.99, f"Expected 0.99 (above ceiling), got {safe_score(0.9999)}"
+
+    print('  safe_score clamp [0.01, 0.99]: PASS')
 
 
 def test_clinical_valid_actions():
@@ -130,7 +157,7 @@ def test_clinical_valid_actions():
 
 
 if __name__ == '__main__':
-    test_safe_score_none()
+    test_safe_score_clamp()
     test_clinical_valid_actions()
     test_sec_identify_variance()
     test_dep_resolve_variance()

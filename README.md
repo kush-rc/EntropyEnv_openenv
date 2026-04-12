@@ -240,7 +240,7 @@ entropyenv/
 **Design principles:**
 - 🎯 **No artificial difficulty caps** — scores reflect actual grader correctness
 - 📊 **Weighted blend** — rewards consistently good episodes over single-lucky-step flukes
-- 🔬 **Spec-compliant** — `[END]` lines have NO `score=` field per official guidelines
+- 🔬 **Spec-compliant** — `[END]` lines perfectly match the 3-line format mandatory rules
 - 🧠 **14+ model families tested** for universal compatibility
 
 ---
@@ -253,7 +253,7 @@ The baseline `inference.py` emits structured logs matching the OpenEnv spec:
 [START] task=sec_easy env=EntropyEnv model=Qwen/Qwen2.5-72B-Instruct
 [STEP] step=1 action=identify_vulnerability reward=0.85 done=false error=null
 [STEP] step=2 action=propose_fix reward=0.92 done=true error=null
-[END] success=true steps=2 rewards=0.85,0.92
+[END] success=true steps=2 score=0.89 rewards=0.85,0.92
 ```
 
 ---

@@ -266,12 +266,12 @@ def run_task(client: OpenAI, task_id: str) -> tuple:
     except Exception as e:
         # Env unreachable — must still emit [START] and [END]
         print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}", flush=True)
-        print(f"[END] success=false steps=0 score=0.01 rewards=0.01", flush=True)
+        print(f"[END] success=false steps=0 score=0.01 rewards=", flush=True)
         return 0.01, False
 
     if "error" in data and not data.get("episode_id"):
         print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}", flush=True)
-        print(f"[END] success=false steps=0 score=0.01 rewards=0.01", flush=True)
+        print(f"[END] success=false steps=0 score=0.01 rewards=", flush=True)
         return 0.01, False
 
     episode_id = data.get("episode_id", "unknown")
@@ -375,10 +375,9 @@ def run_task(client: OpenAI, task_id: str) -> tuple:
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
 
     # ── Mandatory [END] line — exact official spec ─────────────────────────
-    # spec: success=<true|false> steps=<n> rewards=<r1,r2,...,rn>
-    # NO score= field — not in the official spec
+    # spec: success=<true|false> steps=<n> score=<score> rewards=<r1,r2,...,rn>
     print(
-        f"[END] success={str(success).lower()} steps={step_num} score={score:.4f} rewards={rewards_str}",
+        f"[END] success={str(success).lower()} steps={step_num} score={score:.2f} rewards={rewards_str}",
         flush=True
     )
 
@@ -420,13 +419,13 @@ def main() -> None:
                     if remaining not in scores:
                         scores[remaining] = 0.01
                         print(f"[START] task={remaining} env={BENCHMARK} model={MODEL_NAME}", flush=True)
-                        print(f"[END] success=false steps=0 score=0.01 rewards=0.01", flush=True)
+                        print(f"[END] success=false steps=0 score=0.01 rewards=", flush=True)
                 break
 
         except Exception as e:
             scores[task_id] = 0.01
             print(f"[START] task={task_id} env={BENCHMARK} model={MODEL_NAME}", flush=True)
-            print(f"[END] success=false steps=0 score=0.01 rewards=0.01", flush=True)
+            print(f"[END] success=false steps=0 score=0.01 rewards=", flush=True)
 
     avg = round(sum(scores.values()) / max(len(scores), 1), 4)
     print(f"\n✅ All tasks complete! Average: {avg:.4f}", flush=True)
