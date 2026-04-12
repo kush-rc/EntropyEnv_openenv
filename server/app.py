@@ -172,7 +172,7 @@ async def step(request: Request):
         if not valid:
             last_r = 0.01
             if session.history:
-                last_r = max(0.01, session.history[-1].get('reward', 0.01))
+                last_r = min(max(0.01, float(session.history[-1].get('reward', 0.01))), 0.99)
             return {
                 'reward': last_r,
                 'done': False,

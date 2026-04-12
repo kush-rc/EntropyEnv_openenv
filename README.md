@@ -233,7 +233,7 @@ entropyenv/
 
 | Model | Provider | sec_easy | sec_med | sec_hard | dep_easy | dep_med | dep_hard | cli_easy | cli_med | cli_hard | **Avg** |
 |-------|----------|:--------:|:-------:|:--------:|:--------:|:-------:|:--------:|:--------:|:-------:|:--------:|:-------:|
-| *Benchmarking in progress...* | | | | | | | | | | | |
+| *(Run `python unnecessary/run_14_models.py` to auto-populate this table)* | | | | | | | | | | | |
 
 **Scoring formula:** `score = 0.60 × max(step_rewards) + 0.40 × mean(step_rewards)`, clamped to `[0.01, 0.99]`
 

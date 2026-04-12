@@ -337,7 +337,8 @@ def run_task(client: OpenAI, task_id: str) -> tuple:
             rewards.append(0.01)
             break
 
-        reward     = float(step_data.get("reward", 0.0))
+        raw_reward = float(step_data.get("reward", 0.01))
+        reward     = round(min(max(raw_reward, 0.01), 0.99), 4)
         done       = bool(step_data.get("done",   False))
         obs        = step_data.get("observation", step_data)
         step_error = step_data.get("error") or error_msg
